@@ -5,8 +5,16 @@ from __future__ import annotations
 from decimal import Decimal
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
-from tollgate.domain.pricing import ModelPrice, actual_micro, estimate_micro
+from tollgate.domain.pricing import (
+    ModelPrice,
+    Reconciliation,
+    actual_micro,
+    estimate_micro,
+    reconcile,
+)
 
 # $2.50 / 1M input, $10.00 / 1M output, $1.25 / 1M cached input, as micro-USD per token.
 PRICE = ModelPrice(
@@ -71,3 +79,39 @@ def test_actual_rejects_negative_tokens() -> None:
         actual_micro(PRICE, input_tokens=0, output_tokens=-1)
     with pytest.raises(ValueError, match="non-negative"):
         actual_micro(PRICE, input_tokens=0, output_tokens=0, cached_input_tokens=-1)
+
+
+def test_reconcile_under_reservation_has_no_overage() -> None:
+    result = reconcile(reserved_micro=7500, actual_micro=4000)
+    assert result == Reconciliation(committed_micro=4000, overage_micro=0)
+
+
+def test_reconcile_over_reservation_records_overage() -> None:
+    result = reconcile(reserved_micro=4000, actual_micro=7500)
+    assert result == Reconciliation(committed_micro=4000, overage_micro=3500)
+
+
+def test_reconcile_exact_reservation() -> None:
+    result = reconcile(reserved_micro=4000, actual_micro=4000)
+    assert result == Reconciliation(committed_micro=4000, overage_micro=0)
+
+
+def test_reconcile_rejects_negative() -> None:
+    with pytest.raises(ValueError, match="non-negative"):
+        reconcile(reserved_micro=-1, actual_micro=0)
+    with pytest.raises(ValueError, match="non-negative"):
+        reconcile(reserved_micro=0, actual_micro=-1)
+
+
+@given(
+    reserved=st.integers(min_value=0, max_value=10**15),
+    actual=st.integers(min_value=0, max_value=10**15),
+)
+def test_reconcile_conserves_actual_and_caps_committed(reserved: int, actual: int) -> None:
+    result = reconcile(reserved_micro=reserved, actual_micro=actual)
+    # The whole actual is accounted for, split between committed and overage.
+    assert result.committed_micro + result.overage_micro == actual
+    # Commit never moves more than the reservation into committed.
+    assert result.committed_micro <= reserved
+    assert result.committed_micro <= actual
+    assert result.overage_micro >= 0

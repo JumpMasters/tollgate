@@ -31,6 +31,18 @@ class ModelPrice:
     cached_input_micro_per_token: Decimal
 
 
+@dataclass(frozen=True, slots=True)
+class Reconciliation:
+    """The split of an actual cost against its reservation (§4).
+
+    ``committed_micro`` is the part of the reservation that converts to real spend
+    (at most the reserved estimate); ``overage_micro`` is audited drift above it.
+    """
+
+    committed_micro: int
+    overage_micro: int
+
+
 def estimate_micro(price: ModelPrice, *, input_bound_tokens: int, max_output_tokens: int) -> int:
     """Worst-case reserve estimate: full (non-cached) input price + output ceiling.
 
@@ -71,3 +83,17 @@ def actual_micro(
         + price.output_micro_per_token * output_tokens
     )
     return round_micro(total)
+
+
+def reconcile(*, reserved_micro: int, actual_micro: int) -> Reconciliation:
+    """Split an actual cost against its reservation into committed and overage (§4).
+
+    Mirrors the SQL ``LEAST(:actual, :est)`` / ``GREATEST(:actual - :est, 0)`` in the
+    commit guard (§5.2): commit moves at most the reserved estimate; any excess is
+    audited overage.
+    """
+    if reserved_micro < 0 or actual_micro < 0:
+        raise ValueError("monetary amounts must be non-negative")
+    committed = min(actual_micro, reserved_micro)
+    overage = max(actual_micro - reserved_micro, 0)
+    return Reconciliation(committed_micro=committed, overage_micro=overage)
