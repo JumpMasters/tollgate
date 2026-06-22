@@ -30,6 +30,16 @@ class ModelPrice:
     output_micro_per_token: Decimal
     cached_input_micro_per_token: Decimal
 
+    def __post_init__(self) -> None:
+        if (
+            self.input_micro_per_token < 0
+            or self.output_micro_per_token < 0
+            or self.cached_input_micro_per_token < 0
+        ):
+            raise ValueError("per-token rates must be non-negative")
+        if self.cached_input_micro_per_token > self.input_micro_per_token:
+            raise ValueError("cached input rate cannot exceed the full input rate")
+
 
 @dataclass(frozen=True, slots=True)
 class Reconciliation:
@@ -85,15 +95,15 @@ def actual_micro(
     return round_micro(total)
 
 
-def reconcile(*, reserved_micro: int, actual_micro: int) -> Reconciliation:
+def reconcile(*, reserved_micro: int, actual: int) -> Reconciliation:
     """Split an actual cost against its reservation into committed and overage (§4).
 
     Mirrors the SQL ``LEAST(:actual, :est)`` / ``GREATEST(:actual - :est, 0)`` in the
     commit guard (§5.2): commit moves at most the reserved estimate; any excess is
-    audited overage.
+    audited overage. ``actual`` is the reconciled cost from :func:`actual_micro`.
     """
-    if reserved_micro < 0 or actual_micro < 0:
+    if reserved_micro < 0 or actual < 0:
         raise ValueError("monetary amounts must be non-negative")
-    committed = min(actual_micro, reserved_micro)
-    overage = max(actual_micro - reserved_micro, 0)
+    committed = min(actual, reserved_micro)
+    overage = max(actual - reserved_micro, 0)
     return Reconciliation(committed_micro=committed, overage_micro=overage)

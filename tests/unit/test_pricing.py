@@ -31,6 +31,30 @@ def test_model_price_is_immutable() -> None:
         PRICE.input_micro_per_token = Decimal("9")  # type: ignore[misc]
 
 
+def test_model_price_rejects_cached_rate_above_input_rate() -> None:
+    # A cache discount can never cost more than the full input rate; a price book
+    # seeded that way would manufacture spurious overage on an all-cached call.
+    with pytest.raises(ValueError, match="cached input rate"):
+        ModelPrice(
+            provider="openai",
+            model="misconfigured",
+            input_micro_per_token=Decimal("2.5"),
+            output_micro_per_token=Decimal("10"),
+            cached_input_micro_per_token=Decimal("3.0"),
+        )
+
+
+def test_model_price_rejects_negative_rate() -> None:
+    with pytest.raises(ValueError, match="non-negative"):
+        ModelPrice(
+            provider="openai",
+            model="misconfigured",
+            input_micro_per_token=Decimal("-1"),
+            output_micro_per_token=Decimal("10"),
+            cached_input_micro_per_token=Decimal("0"),
+        )
+
+
 def test_estimate_is_input_bound_plus_output_ceiling() -> None:
     # 2.5 * 1000 + 10 * 500 = 2500 + 5000
     assert estimate_micro(PRICE, input_bound_tokens=1000, max_output_tokens=500) == 7500
@@ -67,6 +91,11 @@ def test_actual_prices_cached_subset_at_cached_rate() -> None:
     )
 
 
+def test_actual_prices_full_cache_at_cached_rate() -> None:
+    # Boundary cached == input: non-cached 0, all 1000 input @ 1.25 = 1250.
+    assert actual_micro(PRICE, input_tokens=1000, output_tokens=0, cached_input_tokens=1000) == 1250
+
+
 def test_actual_rejects_cached_exceeding_input() -> None:
     with pytest.raises(ValueError, match="cannot exceed"):
         actual_micro(PRICE, input_tokens=100, output_tokens=0, cached_input_tokens=101)
@@ -82,25 +111,25 @@ def test_actual_rejects_negative_tokens() -> None:
 
 
 def test_reconcile_under_reservation_has_no_overage() -> None:
-    result = reconcile(reserved_micro=7500, actual_micro=4000)
+    result = reconcile(reserved_micro=7500, actual=4000)
     assert result == Reconciliation(committed_micro=4000, overage_micro=0)
 
 
 def test_reconcile_over_reservation_records_overage() -> None:
-    result = reconcile(reserved_micro=4000, actual_micro=7500)
+    result = reconcile(reserved_micro=4000, actual=7500)
     assert result == Reconciliation(committed_micro=4000, overage_micro=3500)
 
 
 def test_reconcile_exact_reservation() -> None:
-    result = reconcile(reserved_micro=4000, actual_micro=4000)
+    result = reconcile(reserved_micro=4000, actual=4000)
     assert result == Reconciliation(committed_micro=4000, overage_micro=0)
 
 
 def test_reconcile_rejects_negative() -> None:
     with pytest.raises(ValueError, match="non-negative"):
-        reconcile(reserved_micro=-1, actual_micro=0)
+        reconcile(reserved_micro=-1, actual=0)
     with pytest.raises(ValueError, match="non-negative"):
-        reconcile(reserved_micro=0, actual_micro=-1)
+        reconcile(reserved_micro=0, actual=-1)
 
 
 @given(
@@ -108,7 +137,7 @@ def test_reconcile_rejects_negative() -> None:
     actual=st.integers(min_value=0, max_value=10**15),
 )
 def test_reconcile_conserves_actual_and_caps_committed(reserved: int, actual: int) -> None:
-    result = reconcile(reserved_micro=reserved, actual_micro=actual)
+    result = reconcile(reserved_micro=reserved, actual=actual)
     # The whole actual is accounted for, split between committed and overage.
     assert result.committed_micro + result.overage_micro == actual
     # Commit never moves more than the reservation into committed.
