@@ -164,6 +164,37 @@ deferred), multi-currency, a proxy/sidecar enforcement mode, full
 multi-tenancy and SSO, a rich web dashboard, semantic caching, budget approval
 workflows, and request rate limiting.
 
+## Limitations
+
+Tollgate is deliberate about where its guarantees stop.
+
+- **Enforcement is cooperative, not a network perimeter.** Tollgate upholds the
+  budget invariant for traffic that goes through the SDK guard. A caller that
+  reaches a provider directly — a raw client holding the provider key — bypasses
+  it, and the ledger will not see that spend until the bill arrives. Closing this
+  needs a proxy or sidecar that sits in the network path, which is on the roadmap,
+  not in V1.
+- **Worst-case reservation can cause false denials.** Because `reserve` holds a
+  worst-case estimate, a large or uncapped estimate can temporarily hold headroom
+  and deny otherwise-admissible concurrent requests until earlier calls reconcile
+  and release. This is the safe direction — over-reserving under-admits, it never
+  overspends — and it is bounded by a configurable per-model default cap (with a
+  strict mode that rejects uncapped calls outright), not by the model's full
+  context window.
+- **Fail-closed makes the datastore a single point of failure.** The gate is
+  consulted synchronously and fails closed by default, so while Postgres is
+  unreachable, governed dispatches are denied — zero untracked spend, but no calls
+  either. The opt-in, per-budget grace allowance trades strict enforcement for
+  availability during an outage (with the exposure quantified as
+  `instances × grace`), and Postgres should be run with high availability.
+
+Two further limits are covered above: committed spend never exceeds a limit, but
+per-call overage is only expected to be small under stable provider tokenization
+(see [What it guarantees](#what-it-guarantees)); and throughput on a single hot
+budget node is bounded by Postgres row-level serialization, which the load harness
+quantifies and the `CounterStore` Redis seam is intended to relieve (see
+[Concurrency model](#concurrency-model)).
+
 ## Design decisions
 
 The significant, hard-to-reverse decisions are recorded as Architecture
