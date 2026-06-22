@@ -1,0 +1,30 @@
+name: dependabot-auto-merge
+
+# Auto-merge Dependabot patch and minor dependency updates once every required
+# check is green. Major bumps are left for a human to review and merge, because
+# they are the ones likely to need code changes. Branch protection still gates
+# the merge: auto-merge only completes after the CI checks pass.
+
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    name: auto-merge
+    runs-on: ubuntu-latest
+    if: github.actor == 'dependabot[bot]'
+    steps:
+      - name: fetch update metadata
+        id: meta
+        uses: dependabot/fetch-metadata@v2
+      - name: enable auto-merge for patch and minor updates
+        if: |
+          steps.meta.outputs.update-type == 'version-update:semver-patch' ||
+          steps.meta.outputs.update-type == 'version-update:semver-minor'
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
