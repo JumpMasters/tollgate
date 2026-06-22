@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from datetime import datetime
 
 from tollgate.domain.ids import ProjectId, ReservationId
 
@@ -76,3 +77,52 @@ class ExtendCommand:
     """
 
     reservation_id: ReservationId
+
+
+@dataclass(frozen=True, slots=True)
+class ReserveResult:
+    """The outcome of a successful reserve (§4).
+
+    A *denied* reserve raises a typed error (``InsufficientBudget`` naming the
+    binding node, or ``BudgetNotFound`` on an empty applicable set) rather than
+    returning a result. ``estimated_micro`` is the worst-case amount held on every
+    applicable node; ``price_book_version`` pins the cost basis the matching commit
+    reconciles against; ``ttl_deadline`` is when the reservation is reaped absent a
+    heartbeat (§5.4).
+    """
+
+    reservation_id: ReservationId
+    estimated_micro: int
+    price_book_version: str
+    ttl_deadline: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class CommitResult:
+    """The reconciliation of a commit (§4).
+
+    ``committed_micro`` is the part of the reservation that converted to real spend
+    (at most the reserved estimate); ``overage_micro`` is audited drift above it. The
+    actual cost is their sum. Every applicable node receives the same split, so one
+    pair describes the whole commit.
+    """
+
+    reservation_id: ReservationId
+    committed_micro: int
+    overage_micro: int
+
+
+@dataclass(frozen=True, slots=True)
+class CancelResult:
+    """The outcome of a cancel: the full estimate released on every line (§4)."""
+
+    reservation_id: ReservationId
+    released_micro: int
+
+
+@dataclass(frozen=True, slots=True)
+class ExtendResult:
+    """The outcome of a heartbeat: the reservation's advanced TTL deadline (§5.4)."""
+
+    reservation_id: ReservationId
+    ttl_deadline: datetime

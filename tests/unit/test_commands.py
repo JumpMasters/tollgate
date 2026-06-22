@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 
 from tollgate.domain.commands import (
     CancelCommand,
+    CancelResult,
     CommitCommand,
+    CommitResult,
     ExtendCommand,
+    ExtendResult,
     ProviderUsage,
     ReserveCommand,
+    ReserveResult,
 )
 from tollgate.domain.ids import ProjectId, ReservationId
 
@@ -102,3 +108,41 @@ def test_extend_command_needs_no_idempotency_key() -> None:
     cmd = ExtendCommand(reservation_id=ReservationId("rsv-1"))
     assert cmd.reservation_id == ReservationId("rsv-1")
     assert not hasattr(cmd, "idempotency_key")
+
+
+def test_reserve_result_reports_estimate_and_price_version() -> None:
+    result = ReserveResult(
+        reservation_id=ReservationId("rsv-1"),
+        estimated_micro=4_200,
+        price_book_version="2026-06-22",
+        ttl_deadline=datetime(2026, 6, 22, 12, 0, tzinfo=UTC),
+    )
+    assert result.estimated_micro == 4_200
+    assert result.price_book_version == "2026-06-22"
+
+
+def test_commit_result_splits_committed_and_overage() -> None:
+    result = CommitResult(
+        reservation_id=ReservationId("rsv-1"),
+        committed_micro=4_000,
+        overage_micro=200,
+    )
+    # actual == committed + overage by construction (§4 reconciliation).
+    assert result.committed_micro + result.overage_micro == 4_200
+
+
+def test_cancel_result_reports_the_released_estimate() -> None:
+    result = CancelResult(reservation_id=ReservationId("rsv-1"), released_micro=4_200)
+    assert result.released_micro == 4_200
+
+
+def test_extend_result_carries_the_new_deadline() -> None:
+    deadline = datetime(2026, 6, 22, 12, 10, tzinfo=UTC)
+    result = ExtendResult(reservation_id=ReservationId("rsv-1"), ttl_deadline=deadline)
+    assert result.ttl_deadline == deadline
+
+
+def test_result_types_are_immutable() -> None:
+    result = CancelResult(reservation_id=ReservationId("rsv-1"), released_micro=1)
+    with pytest.raises(AttributeError):
+        result.released_micro = 2  # type: ignore[misc]
