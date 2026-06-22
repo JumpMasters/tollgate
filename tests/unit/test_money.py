@@ -6,7 +6,7 @@ from decimal import Decimal
 
 import pytest
 
-from tollgate.domain.money import MICRO_PER_USD, from_micro_usd, to_micro_usd
+from tollgate.domain.money import MICRO_PER_USD, from_micro_usd, round_micro, to_micro_usd
 
 
 def test_micro_per_usd_constant() -> None:
@@ -48,3 +48,19 @@ def test_round_trip() -> None:
 def test_from_micro_usd_rejects_negative() -> None:
     with pytest.raises(ValueError, match="non-negative"):
         from_micro_usd(-1)
+
+
+def test_round_micro_rounds_half_up() -> None:
+    assert round_micro(Decimal("0.5")) == 1
+    assert round_micro(Decimal("2.5")) == 3
+    assert round_micro(Decimal("2.4")) == 2
+
+
+def test_round_micro_passes_whole_amounts_through() -> None:
+    assert round_micro(Decimal("100")) == 100
+    assert round_micro(Decimal("0")) == 0
+
+
+def test_round_micro_rejects_negative() -> None:
+    with pytest.raises(ValueError, match="non-negative"):
+        round_micro(Decimal("-1"))
