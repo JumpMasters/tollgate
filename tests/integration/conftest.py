@@ -8,11 +8,14 @@ a transaction that is rolled back afterwards, so tests never see each other's ro
 
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 
 import pytest
 import pytest_asyncio
+from alembic import command
+from alembic.config import Config
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 from testcontainers.postgres import PostgresContainer
@@ -28,9 +31,18 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
 
 @pytest.fixture(scope="session")
 def postgres_url() -> Iterator[str]:
-    """Start Postgres for the session and yield its asyncpg URL."""
+    """Start Postgres, migrate it to head, and yield its asyncpg URL.
+
+    This fixture is synchronous and runs at session setup with no event loop active,
+    so the async Alembic env's ``asyncio.run`` is safe here.
+    """
     with PostgresContainer("postgres:17") as postgres:
-        yield postgres.get_connection_url(driver="asyncpg")
+        url = postgres.get_connection_url(driver="asyncpg")
+        os.environ["TOLLGATE_DATABASE_URL"] = url
+        config = Config()
+        config.set_main_option("script_location", "migrations")
+        command.upgrade(config, "head")
+        yield url
 
 
 @pytest_asyncio.fixture
