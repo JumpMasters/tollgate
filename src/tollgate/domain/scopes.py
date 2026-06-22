@@ -16,8 +16,11 @@ in here. No I/O, no internal imports beyond sibling ``domain`` modules.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import Final
+
+from tollgate.domain.ids import BudgetId
 
 
 class ScopeKind(StrEnum):
@@ -43,3 +46,29 @@ _SCOPE_RANK: Final[dict[ScopeKind, int]] = {
 def scope_rank(kind: ScopeKind) -> int:
     """Return the lock-ordering rank of ``kind`` (org < team < user < project)."""
     return _SCOPE_RANK[kind]
+
+
+@dataclass(frozen=True, slots=True)
+class BudgetNode:
+    """One budget on the enforcement path, identified by the node it governs.
+
+    ``scope_id`` is the id of the governed node (an org/team/user/project id),
+    carried as ``str`` because the kind is orthogonal to the id's type.
+    ``budget_id`` is the budget row the persistence layer locks and updates.
+    """
+
+    budget_id: BudgetId
+    scope_kind: ScopeKind
+    scope_id: str
+
+
+def lock_order_key(node: BudgetNode) -> tuple[int, str]:
+    """Canonical sort key for deadlock-free lock acquisition (§5.3).
+
+    Orders by ``(scope_kind rank, scope_id)``. The storage-layer order is the
+    3-tuple ``(scope_kind rank, scope_id, period_start)``; within a single
+    reserve every applicable balance shares one ``period_start``, so this
+    node-level key is the operative order, and ``period_start`` enters as the
+    final ``ORDER BY`` column where balance rows are loaded (plans 05/07).
+    """
+    return (scope_rank(node.scope_kind), node.scope_id)
