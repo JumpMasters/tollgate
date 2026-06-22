@@ -16,10 +16,12 @@ in here. No I/O, no internal imports beyond sibling ``domain`` modules.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Final
 
+from tollgate.domain.errors import BudgetNotFound
 from tollgate.domain.ids import BudgetId
 
 
@@ -72,3 +74,31 @@ def lock_order_key(node: BudgetNode) -> tuple[int, str]:
     final ``ORDER BY`` column where balance rows are loaded (plans 05/07).
     """
     return (scope_rank(node.scope_kind), node.scope_id)
+
+
+def resolve_applicable_set(
+    ancestry: Iterable[BudgetNode],
+    project: BudgetNode | None = None,
+) -> tuple[BudgetNode, ...]:
+    """Assemble the applicable budget set for a reserve, canonically ordered (§4, §5.3).
+
+    ``ancestry`` is the org/team/user budget nodes that **exist** for the
+    principal — the caller has already skipped ancestry scopes without a budget
+    (that lookup is I/O, performed before calling here). ``project`` is the
+    request's project budget, supplied only when the request named a project
+    **and** the credential authorizes it **and** it carries a budget; ``None``
+    otherwise.
+
+    Nodes are de-duplicated by ``(scope_kind, scope_id)`` — a node must be locked
+    and charged exactly once — and returned sorted by :func:`lock_order_key`.
+    Raises :class:`BudgetNotFound` if the resulting set is empty: a request
+    governed by no budget is denied by default (§5.3), never vacuously admitted.
+    """
+    nodes: dict[tuple[ScopeKind, str], BudgetNode] = {}
+    for node in ancestry:
+        nodes.setdefault((node.scope_kind, node.scope_id), node)
+    if project is not None:
+        nodes.setdefault((project.scope_kind, project.scope_id), project)
+    if not nodes:
+        raise BudgetNotFound("no budget governs the request")
+    return tuple(sorted(nodes.values(), key=lock_order_key))
