@@ -10,7 +10,7 @@ dependencies = [
     "fastapi>=0.138.0",
     "pydantic>=2.9",
     "pydantic-settings>=2.14.2",
-    "sqlalchemy>=2.0",
+    "sqlalchemy>=2.0.51",
     "asyncpg>=0.31.0",
     # Required wherever the async SQLAlchemy engine runs. SQLAlchemy only
     # declares greenlet for select platform_machine values, which exclude macOS
