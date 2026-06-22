@@ -50,3 +50,38 @@ def can_reserve(balance: Balance, estimate_micro: int) -> bool:
     >= :est``. Requires a non-negative estimate.
     """
     return estimate_micro >= 0 and remaining(balance) >= estimate_micro
+
+
+def amounts_non_negative(balance: Balance) -> bool:
+    """Every aggregate is non-negative -- the ``budget_balance`` CHECKs (§3)."""
+    return (
+        balance.limit_micro >= 0
+        and balance.reserved_micro >= 0
+        and balance.committed_micro >= 0
+        and balance.overage_micro >= 0
+    )
+
+
+def committed_within_limit(balance: Balance) -> bool:
+    """No breach: ``committed`` never exceeds ``limit`` -- the headline guarantee (§4)."""
+    return balance.committed_micro <= balance.limit_micro
+
+
+def reservation_within_limit(balance: Balance) -> bool:
+    """Storage-tier guard: ``reserved + committed <= limit``, local to the row (§3, §5.2)."""
+    return balance.reserved_micro + balance.committed_micro <= balance.limit_micro
+
+
+def node_invariants_hold(balance: Balance) -> bool:
+    """The per-node spend invariants, conjoined -- asserted after every step (§7).
+
+    Non-negativity, no-breach (``committed <= limit``), and the storage guard
+    (``reserved + committed <= limit``). It deliberately does *not* require
+    ``remaining >= 0``: audited overage may drive ``remaining`` negative while every
+    guarantee above still holds (§4).
+    """
+    return (
+        amounts_non_negative(balance)
+        and committed_within_limit(balance)
+        and reservation_within_limit(balance)
+    )
