@@ -17,12 +17,18 @@ MICRO_PER_USD: Final = 1_000_000
 _MICRO = Decimal(MICRO_PER_USD)
 
 
+def round_micro(amount_micro: Decimal) -> int:
+    """Round a micro-USD ``Decimal`` to the nearest whole micro-USD (half-up)."""
+    if amount_micro < 0:
+        raise ValueError("monetary amounts must be non-negative")
+    return int(amount_micro.quantize(Decimal(1), rounding=ROUND_HALF_UP))
+
+
 def to_micro_usd(usd: Decimal) -> int:
     """Convert an amount of US dollars to integer micro-USD (rounded half-up)."""
     if usd < 0:
         raise ValueError("monetary amounts must be non-negative")
-    micro = (usd * _MICRO).quantize(Decimal(1), rounding=ROUND_HALF_UP)
-    return int(micro)
+    return round_micro(usd * _MICRO)
 
 
 def from_micro_usd(micro: int) -> Decimal:
