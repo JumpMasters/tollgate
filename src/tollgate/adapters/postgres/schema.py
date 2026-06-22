@@ -13,10 +13,12 @@ asserts those tuples match the domain enums where one exists.
 from __future__ import annotations
 
 from sqlalchemy import (
+    BigInteger,
     CheckConstraint,
     Column,
     DateTime,
     ForeignKey,
+    Integer,
     MetaData,
     Numeric,
     PrimaryKeyConstraint,
@@ -117,4 +119,54 @@ price = Table(
     Column("output_micro_per_token", Numeric, nullable=False),
     Column("cached_input_micro_per_token", Numeric, nullable=False),
     PrimaryKeyConstraint("price_book_version", "provider", "model"),
+)
+
+budget = Table(
+    "budget",
+    metadata,
+    Column("budget_id", Text, primary_key=True),
+    Column("scope_kind", Text, nullable=False),
+    Column("scope_id", Text, nullable=False),
+    Column("period_kind", Text, nullable=False),
+    Column("period_len_days", Integer, nullable=True),
+    Column("hard_limit_micro", BigInteger, nullable=False),
+    Column("currency", Text, nullable=False, server_default=text("'USD'")),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    _enum_check("scope_kind", SCOPE_KINDS, "scope_kind"),
+    _enum_check("period_kind", PERIOD_KINDS, "period_kind"),
+    CheckConstraint("hard_limit_micro >= 0", name="hard_limit_non_negative"),
+    CheckConstraint(
+        "(period_kind = 'rolling_days' AND period_len_days IS NOT NULL AND period_len_days > 0)"
+        " OR (period_kind = 'calendar_month' AND period_len_days IS NULL)",
+        name="period_len_days_matches_kind",
+    ),
+    UniqueConstraint("scope_kind", "scope_id", "period_kind"),
+)
+
+budget_alert = Table(
+    "budget_alert",
+    metadata,
+    Column("budget_id", Text, ForeignKey("budget.budget_id"), nullable=False),
+    Column("threshold_pct", Integer, nullable=False),
+    CheckConstraint("threshold_pct > 0 AND threshold_pct <= 100", name="threshold_pct_range"),
+    PrimaryKeyConstraint("budget_id", "threshold_pct"),
+)
+
+budget_balance = Table(
+    "budget_balance",
+    metadata,
+    Column("budget_id", Text, ForeignKey("budget.budget_id"), nullable=False),
+    Column("period_start", DateTime(timezone=True), nullable=False),
+    Column("limit_micro", BigInteger, nullable=False),
+    Column("reserved_micro", BigInteger, nullable=False, server_default=text("0")),
+    Column("committed_micro", BigInteger, nullable=False, server_default=text("0")),
+    Column("overage_micro", BigInteger, nullable=False, server_default=text("0")),
+    CheckConstraint("reserved_micro >= 0", name="reserved_non_negative"),
+    CheckConstraint("committed_micro >= 0", name="committed_non_negative"),
+    CheckConstraint("overage_micro >= 0", name="overage_non_negative"),
+    CheckConstraint(
+        "reserved_micro + committed_micro <= limit_micro",
+        name="reserved_committed_within_limit",
+    ),
+    PrimaryKeyConstraint("budget_id", "period_start"),
 )
