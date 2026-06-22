@@ -18,6 +18,8 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
+    Index,
     Integer,
     MetaData,
     Numeric,
@@ -28,6 +30,7 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 
 #: Deterministic constraint names (stable for Alembic and assertable in tests).
 NAMING_CONVENTION = {
@@ -169,4 +172,44 @@ budget_balance = Table(
         name="reserved_committed_within_limit",
     ),
     PrimaryKeyConstraint("budget_id", "period_start"),
+)
+
+reservation = Table(
+    "reservation",
+    metadata,
+    Column("reservation_id", Text, primary_key=True),
+    Column("idempotency_key", Text, nullable=False),
+    Column("status", Text, nullable=False, server_default=text("'held'")),
+    Column("principal_id", Text, ForeignKey("user_principal.user_id"), nullable=False),
+    Column("provider", Text, nullable=False),
+    Column("model", Text, nullable=False),
+    Column("price_book_version", Text, ForeignKey("price_book.version"), nullable=False),
+    Column("estimated_micro", BigInteger, nullable=False),
+    Column("input_bound_tokens", BigInteger, nullable=False),
+    Column("max_output_tokens", BigInteger, nullable=False),
+    Column("labels", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("ttl_deadline", DateTime(timezone=True), nullable=False),
+    _enum_check("status", RESERVATION_STATUSES, "status"),
+    CheckConstraint("estimated_micro >= 0", name="estimated_non_negative"),
+    CheckConstraint(
+        "input_bound_tokens >= 0 AND max_output_tokens >= 0",
+        name="token_bounds_non_negative",
+    ),
+    UniqueConstraint("idempotency_key"),
+    Index("ix_reservation_status_ttl_deadline", "status", "ttl_deadline"),
+)
+
+reservation_line = Table(
+    "reservation_line",
+    metadata,
+    Column("reservation_id", Text, ForeignKey("reservation.reservation_id"), nullable=False),
+    Column("budget_id", Text, nullable=False),
+    Column("period_start", DateTime(timezone=True), nullable=False),
+    Column("amount_micro", BigInteger, nullable=False),
+    ForeignKeyConstraint(
+        ["budget_id", "period_start"],
+        ["budget_balance.budget_id", "budget_balance.period_start"],
+    ),
+    PrimaryKeyConstraint("reservation_id", "budget_id", "period_start"),
 )
