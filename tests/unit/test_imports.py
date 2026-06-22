@@ -16,6 +16,8 @@ MODULES = [
     "tollgate.domain.errors",
     "tollgate.domain.reservations",
     "tollgate.domain.scopes",
+    "tollgate.domain.commands",
+    "tollgate.domain.invariants",
     "tollgate.application",
     "tollgate.application.ports",
     "tollgate.application.handlers",
