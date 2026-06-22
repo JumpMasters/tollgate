@@ -101,3 +101,83 @@ async def test_budget_alert_threshold_check_rejects_out_of_range(db_conn: AsyncC
         await db_conn.execute(
             text("INSERT INTO budget_alert (budget_id, threshold_pct) VALUES ('b1', 150)")
         )
+
+
+async def test_budget_balance_rejects_negative_committed(db_conn: AsyncConnection) -> None:
+    await _seed_budget(db_conn)
+    with pytest.raises(IntegrityError):
+        await db_conn.execute(
+            text(
+                "INSERT INTO budget_balance "
+                "(budget_id, period_start, limit_micro, reserved_micro, "
+                "committed_micro, overage_micro) "
+                "VALUES ('b1', now(), 1000, 0, -1, 0)"
+            )
+        )
+
+
+async def test_budget_balance_rejects_negative_overage(db_conn: AsyncConnection) -> None:
+    await _seed_budget(db_conn)
+    with pytest.raises(IntegrityError):
+        await db_conn.execute(
+            text(
+                "INSERT INTO budget_balance "
+                "(budget_id, period_start, limit_micro, reserved_micro, "
+                "committed_micro, overage_micro) "
+                "VALUES ('b1', now(), 1000, 0, 0, -1)"
+            )
+        )
+
+
+async def test_budget_scope_kind_check_rejects_unknown(db_conn: AsyncConnection) -> None:
+    with pytest.raises(IntegrityError):
+        await db_conn.execute(
+            text(
+                "INSERT INTO budget "
+                "(budget_id, scope_kind, scope_id, period_kind, hard_limit_micro) "
+                "VALUES ('b1', 'department', 'd1', 'calendar_month', 1000)"
+            )
+        )
+
+
+async def test_budget_rejects_negative_hard_limit(db_conn: AsyncConnection) -> None:
+    with pytest.raises(IntegrityError):
+        await db_conn.execute(
+            text(
+                "INSERT INTO budget "
+                "(budget_id, scope_kind, scope_id, period_kind, hard_limit_micro) "
+                "VALUES ('b1', 'org', 'o1', 'calendar_month', -1)"
+            )
+        )
+
+
+async def test_budget_rolling_days_requires_period_len(db_conn: AsyncConnection) -> None:
+    with pytest.raises(IntegrityError):
+        await db_conn.execute(
+            text(
+                "INSERT INTO budget "
+                "(budget_id, scope_kind, scope_id, period_kind, period_len_days, hard_limit_micro) "
+                "VALUES ('b1', 'org', 'o1', 'rolling_days', NULL, 1000)"
+            )
+        )
+
+
+async def test_budget_calendar_month_forbids_period_len(db_conn: AsyncConnection) -> None:
+    with pytest.raises(IntegrityError):
+        await db_conn.execute(
+            text(
+                "INSERT INTO budget "
+                "(budget_id, scope_kind, scope_id, period_kind, period_len_days, hard_limit_micro) "
+                "VALUES ('b1', 'org', 'o1', 'calendar_month', 30, 1000)"
+            )
+        )
+
+
+async def test_budget_accepts_rolling_days_with_positive_len(db_conn: AsyncConnection) -> None:
+    await db_conn.execute(
+        text(
+            "INSERT INTO budget "
+            "(budget_id, scope_kind, scope_id, period_kind, period_len_days, hard_limit_micro) "
+            "VALUES ('b1', 'org', 'o1', 'rolling_days', 30, 1000)"
+        )
+    )
