@@ -45,3 +45,29 @@ def estimate_micro(price: ModelPrice, *, input_bound_tokens: int, max_output_tok
         + price.output_micro_per_token * max_output_tokens
     )
     return round_micro(total)
+
+
+def actual_micro(
+    price: ModelPrice,
+    *,
+    input_tokens: int,
+    output_tokens: int,
+    cached_input_tokens: int = 0,
+) -> int:
+    """Reconciled cost from provider-reported usage (§4).
+
+    ``cached_input_tokens`` is the subset of ``input_tokens`` served from the
+    provider's prompt cache, priced at the cached rate; the remaining input tokens
+    and all output tokens price at the full rates. Returns integer micro-USD.
+    """
+    if input_tokens < 0 or output_tokens < 0 or cached_input_tokens < 0:
+        raise ValueError("token counts must be non-negative")
+    if cached_input_tokens > input_tokens:
+        raise ValueError("cached input tokens cannot exceed input tokens")
+    non_cached = input_tokens - cached_input_tokens
+    total = (
+        price.input_micro_per_token * non_cached
+        + price.cached_input_micro_per_token * cached_input_tokens
+        + price.output_micro_per_token * output_tokens
+    )
+    return round_micro(total)
