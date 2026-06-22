@@ -5,6 +5,8 @@ from __future__ import annotations
 from decimal import Decimal
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from tollgate.domain.money import MICRO_PER_USD, from_micro_usd, round_micro, to_micro_usd
 
@@ -43,6 +45,12 @@ def test_from_micro_usd_inverts() -> None:
 
 def test_round_trip() -> None:
     assert to_micro_usd(from_micro_usd(2_500_000)) == 2_500_000
+
+
+@given(micro=st.integers(min_value=0, max_value=10**15))
+def test_micro_round_trip_is_lossless(micro: int) -> None:
+    # Any whole micro-USD survives the dollars round-trip exactly.
+    assert to_micro_usd(from_micro_usd(micro)) == micro
 
 
 def test_from_micro_usd_rejects_negative() -> None:

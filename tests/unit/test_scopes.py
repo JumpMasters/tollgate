@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from tollgate.domain.errors import BudgetNotFound, ConflictingBudgetScope
 from tollgate.domain.ids import BudgetId
@@ -143,3 +145,24 @@ def test_resolve_empty_set_is_denied() -> None:
 def test_resolve_empty_ancestry_with_no_project_is_denied() -> None:
     with pytest.raises(BudgetNotFound, match="no budget"):
         resolve_applicable_set([], project=None)
+
+
+@given(
+    st.lists(
+        st.tuples(st.sampled_from(list(ScopeKind)), st.text(alphabet="ab", min_size=1, max_size=3)),
+        min_size=1,
+        max_size=8,
+    )
+)
+def test_resolve_is_lock_ordered_and_deduped(pairs: list[tuple[ScopeKind, str]]) -> None:
+    # For any permutation (with repeats) of nodes, the result is canonically
+    # lock-ordered, carries each (scope_kind, scope_id) exactly once, and loses
+    # none. Each node's budget_id is deterministic per scope, so repeats de-dup
+    # rather than conflict.
+    nodes = [_node(kind, scope_id) for kind, scope_id in pairs]
+    result = resolve_applicable_set(nodes)
+    keys = [lock_order_key(node) for node in result]
+    assert keys == sorted(keys)
+    scopes = [(node.scope_kind, node.scope_id) for node in result]
+    assert len(scopes) == len(set(scopes))
+    assert set(scopes) == {(kind, scope_id) for kind, scope_id in pairs}

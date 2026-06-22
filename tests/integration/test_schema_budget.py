@@ -195,3 +195,15 @@ async def test_budget_accepts_rolling_days_with_positive_len(db_conn: AsyncConne
             "VALUES ('b1', 'org', 'o1', 'rolling_days', 30, 1000)"
         )
     )
+
+
+async def test_budget_rolling_days_rejects_zero_len(db_conn: AsyncConnection) -> None:
+    # The period CHECK requires period_len_days > 0 for rolling_days; zero is rejected.
+    with pytest.raises(IntegrityError):
+        await db_conn.execute(
+            text(
+                "INSERT INTO budget "
+                "(budget_id, scope_kind, scope_id, period_kind, period_len_days, hard_limit_micro) "
+                "VALUES ('b1', 'org', 'o1', 'rolling_days', 0, 1000)"
+            )
+        )

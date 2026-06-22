@@ -13,5 +13,7 @@ async def test_migration_creates_every_model_table(db_conn: AsyncConnection) -> 
         return set(inspect(sync_conn).get_table_names())
 
     present = await db_conn.run_sync(_table_names)
-    assert set(metadata.tables) <= present
-    assert "alembic_version" in present  # Alembic stamped the revision
+    # Exact match (plus Alembic's own bookkeeping table) catches drift in either
+    # direction: a model table missing from the migration, or a migrated table
+    # absent from the model.
+    assert present == set(metadata.tables) | {"alembic_version"}
