@@ -1,0 +1,51 @@
+"""Typed errors raised by the domain and surfaced through the application.
+
+These describe *business* outcomes (an exhausted budget, an unknown model) and
+operational ones (the datastore being unreachable). Callers match on the type,
+never on a string.
+"""
+
+from __future__ import annotations
+
+
+class TollgateError(Exception):
+    """Base class for every error Tollgate raises."""
+
+
+class EnforcementUnavailable(TollgateError):
+    """The spend gate could not reach its datastore, so no decision was made.
+
+    Under the default fail-closed policy the call must not be dispatched.
+    """
+
+
+class InsufficientBudget(TollgateError):
+    """A reserve was denied because a budget node lacked headroom.
+
+    The binding node is named so the caller knows which limit was hit.
+    """
+
+    def __init__(self, scope: str) -> None:
+        super().__init__(f"insufficient budget at {scope}")
+        self.scope = scope
+
+
+class BudgetNotFound(TollgateError):
+    """No budget governs the requested scope."""
+
+
+class UnknownModel(TollgateError):
+    """The requested (provider, model) pair is absent from the price book."""
+
+    def __init__(self, provider: str, model: str) -> None:
+        super().__init__(f"unknown model: {provider}/{model}")
+        self.provider = provider
+        self.model = model
+
+
+class IdempotencyKeyReuse(TollgateError):
+    """An idempotency key was reused with a different command fingerprint."""
+
+
+class ReservationNotHeld(TollgateError):
+    """A terminal command targeted a reservation that is no longer held."""

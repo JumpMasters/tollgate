@@ -1,0 +1,130 @@
+[project]
+name = "tollgate"
+dynamic = ["version"]
+description = "A pre-charge spend control plane that enforces hard budgets on AI model usage."
+readme = "README.md"
+requires-python = ">=3.13"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+dependencies = [
+    "fastapi>=0.138.0",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.14.2",
+    "sqlalchemy>=2.0",
+    "asyncpg>=0.31.0",
+    # Required wherever the async SQLAlchemy engine runs. SQLAlchemy only
+    # declares greenlet for select platform_machine values, which exclude macOS
+    # arm64 (reported as 'arm64', not 'aarch64'), so it is absent from the
+    # resolved environment there. Depend on it directly so the lock guarantees
+    # it on every platform.
+    "greenlet>=3.2",
+    "alembic>=1.14",
+    "uvicorn>=0.49.0",
+    "uuid-utils>=0.16.1",
+]
+
+[project.urls]
+Repository = "https://github.com/JumpMasters/tollgate"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=1.4.0",
+    "pytest-cov>=7.1.0",
+    "hypothesis>=6.155.7",
+    "ruff>=0.15.17",
+    "mypy>=2.1.0",
+    "import-linter>=2.1",
+    "pip-audit>=2.7",
+    "testcontainers[postgres]>=4.14.2",
+    "httpx>=0.28.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/tollgate/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tollgate"]
+
+# --- Lint / format ---------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+src = ["src", "tests", "loadtest"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "C4", "SIM", "RUF", "ASYNC"]
+
+# --- Types -----------------------------------------------------------------
+[tool.mypy]
+python_version = "3.13"
+strict = true
+files = ["src", "tests", "loadtest"]
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = ["uuid_utils.*", "testcontainers.*"]
+ignore_missing_imports = true
+
+# --- Tests / coverage ------------------------------------------------------
+[tool.pytest.ini_options]
+addopts = "-ra --strict-markers --strict-config"
+pythonpath = ["."]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "integration: tests that require a running Postgres (deselect with -m 'not integration')",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["tollgate"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 80
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "\\.\\.\\.",
+    "@(typing\\.)?overload",
+]
+
+# --- Architecture boundaries (the import-DAG guard) ------------------------
+[tool.importlinter]
+root_package = "tollgate"
+
+[[tool.importlinter.contracts]]
+name = "domain is a pure leaf (imports nothing internal)"
+type = "forbidden"
+source_modules = ["tollgate.domain"]
+forbidden_modules = [
+    "tollgate.application",
+    "tollgate.adapters",
+    "tollgate.api",
+    "tollgate.workers",
+    "tollgate.config",
+]
+
+[[tool.importlinter.contracts]]
+name = "application depends only on domain (declares ports; never imports concretes)"
+type = "forbidden"
+source_modules = ["tollgate.application"]
+forbidden_modules = [
+    "tollgate.adapters",
+    "tollgate.api",
+    "tollgate.workers",
+]
+
+[[tool.importlinter.contracts]]
+name = "only the composition root wires concretes (api/workers stay off adapters)"
+type = "forbidden"
+source_modules = [
+    "tollgate.api",
+    "tollgate.workers",
+]
+forbidden_modules = ["tollgate.adapters"]
