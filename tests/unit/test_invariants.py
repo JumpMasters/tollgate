@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from tollgate.domain.invariants import (
     Balance,
+    LedgerDelta,
     amounts_non_negative,
     can_reserve,
+    committed_rolls_up,
     committed_within_limit,
+    conserves,
     node_invariants_hold,
     remaining,
     reservation_within_limit,
@@ -98,3 +101,38 @@ def test_node_invariants_hold_false_on_negative_aggregate() -> None:
 
 def test_node_invariants_hold_false_when_reservation_exceeds_limit() -> None:
     assert not node_invariants_hold(_balance(limit=100, reserved=70, committed=40))
+
+
+def test_conserves_when_deltas_sum_to_the_balance() -> None:
+    b = _balance(limit=100, reserved=30, committed=40, overage=10)
+    deltas = [
+        LedgerDelta(delta_reserved_micro=70, delta_committed_micro=0, delta_overage_micro=0),
+        LedgerDelta(delta_reserved_micro=-40, delta_committed_micro=40, delta_overage_micro=10),
+    ]
+    assert conserves(b, deltas)
+
+
+def test_conserves_false_when_a_component_disagrees() -> None:
+    b = _balance(limit=100, reserved=30, committed=40, overage=10)
+    deltas = [
+        LedgerDelta(delta_reserved_micro=30, delta_committed_micro=40, delta_overage_micro=9),
+    ]
+    assert not conserves(b, deltas)
+
+
+def test_conserves_with_no_deltas_requires_a_zero_balance() -> None:
+    assert conserves(_balance(limit=100), [])
+    assert not conserves(_balance(limit=100, reserved=1), [])
+
+
+def test_committed_rolls_up_when_parent_equals_sum_of_children() -> None:
+    assert committed_rolls_up(100, [60, 40])
+
+
+def test_committed_rolls_up_false_on_mismatch() -> None:
+    assert not committed_rolls_up(100, [60, 30])
+
+
+def test_committed_rolls_up_with_no_children_requires_zero_parent() -> None:
+    assert committed_rolls_up(0, [])
+    assert not committed_rolls_up(5, [])

@@ -11,6 +11,7 @@ the *same* definitions. No I/O, no internal imports.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 
@@ -85,3 +86,49 @@ def node_invariants_hold(balance: Balance) -> bool:
         and committed_within_limit(balance)
         and reservation_within_limit(balance)
     )
+
+
+@dataclass(frozen=True, slots=True)
+class LedgerDelta:
+    """One ledger row's signed effect on a balance (§3 sign convention).
+
+    Carries only the three deltas; the full ledger row (kind, ids, timestamps, token
+    counts) is a persistence concern (plan 06). The oracle sums these per
+    ``(budget, period)``.
+    """
+
+    delta_reserved_micro: int
+    delta_committed_micro: int
+    delta_overage_micro: int
+
+
+def conserves(balance: Balance, deltas: Iterable[LedgerDelta]) -> bool:
+    """Conservation (§3, §7): summed ledger deltas reconstruct the live balance.
+
+    For one ``(budget, period)``: sum of delta_reserved == reserved, sum of
+    delta_committed == committed, sum of delta_overage == overage. Catches the
+    lost-update / double-apply bugs across the multi-budget reserve that the
+    row-local CHECKs cannot. Single-pass, so a one-shot iterator is fine.
+    """
+    total_reserved = 0
+    total_committed = 0
+    total_overage = 0
+    for delta in deltas:
+        total_reserved += delta.delta_reserved_micro
+        total_committed += delta.delta_committed_micro
+        total_overage += delta.delta_overage_micro
+    return (
+        total_reserved == balance.reserved_micro
+        and total_committed == balance.committed_micro
+        and total_overage == balance.overage_micro
+    )
+
+
+def committed_rolls_up(parent_committed_micro: int, child_committed_micro: Iterable[int]) -> bool:
+    """Tree consistency (§7): a budgeted parent's committed == sum of its children's.
+
+    Applied per parent over its budgeted children on the enforcement path. The
+    orthogonal ``project`` axis is summed independently and is *not* part of this
+    relation.
+    """
+    return parent_committed_micro == sum(child_committed_micro)
