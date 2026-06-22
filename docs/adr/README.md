@@ -31,6 +31,8 @@ The format follows Michael Nygard's
 - [0020 — Empty applicable-budget set is a denial](0020-empty-applicable-budget-set-denies.md)
 - [0021 — Provider-qualified price book](0021-provider-qualified-price-book.md)
 - [0022 — The SDK guard enforces; the LiteLLM callback only meters](0022-sdk-enforces-litellm-meters.md)
+- [0023 — Async Alembic on asyncpg, no separate sync migration driver](0023-async-alembic-asyncpg-no-psycopg.md)
+- [0024 — Baseline migration builds the schema from the canonical MetaData](0024-metadata-create-all-baseline-migration.md)
 
 ## Adding a record
 
