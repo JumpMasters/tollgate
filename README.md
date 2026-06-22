@@ -108,11 +108,15 @@ flowchart LR
 ```
 
 The `CounterStore` port is the seam where a future Redis fast-path can slot in
-without touching ledger semantics or the domain. Enforcement runs in the SDK
-guard, which can deny before dispatch; a LiteLLM callback is provided for
+without touching ledger semantics or the domain. Enforcement will run in the SDK
+guard, which can deny before dispatch; a LiteLLM callback is planned for
 post-call metering only.
 
 ## Project layout
+
+The tree below is the intended V1 layout; several packages — the SDK and LiteLLM
+integrations, the workers, and the load harness — are still stubs (see
+[Status](#status)).
 
 ```
 src/tollgate/
