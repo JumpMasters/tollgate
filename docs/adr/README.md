@@ -33,6 +33,7 @@ The format follows Michael Nygard's
 - [0022 — The SDK guard enforces; the LiteLLM callback only meters](0022-sdk-enforces-litellm-meters.md)
 - [0023 — Async Alembic on asyncpg, no separate sync migration driver](0023-async-alembic-asyncpg-no-psycopg.md)
 - [0024 — Baseline migration builds the schema from the canonical MetaData](0024-metadata-create-all-baseline-migration.md)
+- [0025 — At most one budget per scope node in V1](0025-one-budget-per-scope-node.md)
 
 ## Adding a record
 

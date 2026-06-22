@@ -143,7 +143,8 @@ budget = Table(
         " OR (period_kind = 'calendar_month' AND period_len_days IS NULL)",
         name="period_len_days_matches_kind",
     ),
-    UniqueConstraint("scope_kind", "scope_id", "period_kind"),
+    # ADR 0025: at most one budget per scope node in V1.
+    UniqueConstraint("scope_kind", "scope_id"),
 )
 
 budget_alert = Table(
