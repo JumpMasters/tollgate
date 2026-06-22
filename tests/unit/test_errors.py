@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from tollgate.domain.errors import (
     BudgetNotFound,
+    ConflictingBudgetScope,
     EnforcementUnavailable,
     IdempotencyKeyReuse,
     InsufficientBudget,
@@ -21,6 +22,7 @@ def test_every_error_descends_from_base() -> None:
         UnknownModel,
         IdempotencyKeyReuse,
         ReservationNotHeld,
+        ConflictingBudgetScope,
     ):
         assert issubclass(exc, TollgateError)
 
@@ -36,6 +38,13 @@ def test_unknown_model_carries_the_pair() -> None:
     assert err.provider == "openai"
     assert err.model == "gpt-x"
     assert "openai/gpt-x" in str(err)
+
+
+def test_conflicting_budget_scope_names_the_node() -> None:
+    err = ConflictingBudgetScope("team", "t1")
+    assert err.scope_kind == "team"
+    assert err.scope_id == "t1"
+    assert "team:t1" in str(err)
 
 
 def test_enforcement_unavailable_is_raisable() -> None:

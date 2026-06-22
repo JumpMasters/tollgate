@@ -30,6 +30,20 @@ async def test_budget_unique_rejects_duplicate_scope_period(db_conn: AsyncConnec
         )
 
 
+async def test_budget_unique_rejects_second_budget_on_same_node(db_conn: AsyncConnection) -> None:
+    # ADR 0025: at most one budget per (scope_kind, scope_id) node, so a second
+    # budget on the same node is rejected even when its period_kind differs.
+    await _seed_budget(db_conn)  # (org, o1, calendar_month)
+    with pytest.raises(IntegrityError):
+        await db_conn.execute(
+            text(
+                "INSERT INTO budget "
+                "(budget_id, scope_kind, scope_id, period_kind, period_len_days, hard_limit_micro) "
+                "VALUES ('b2', 'org', 'o1', 'rolling_days', 30, 2000)"
+            )
+        )
+
+
 async def test_budget_period_kind_check_rejects_unknown(db_conn: AsyncConnection) -> None:
     with pytest.raises(IntegrityError):
         await db_conn.execute(

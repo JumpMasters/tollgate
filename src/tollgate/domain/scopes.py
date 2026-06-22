@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Final
 
-from tollgate.domain.errors import BudgetNotFound
+from tollgate.domain.errors import BudgetNotFound, ConflictingBudgetScope
 from tollgate.domain.ids import BudgetId
 
 
@@ -89,16 +89,28 @@ def resolve_applicable_set(
     **and** the credential authorizes it **and** it carries a budget; ``None``
     otherwise.
 
-    Nodes are de-duplicated by ``(scope_kind, scope_id)`` — a node must be locked
-    and charged exactly once — and returned sorted by :func:`lock_order_key`.
-    Raises :class:`BudgetNotFound` if the resulting set is empty: a request
-    governed by no budget is denied by default (§5.3), never vacuously admitted.
+    Budgets are de-duplicated by ``budget_id`` — the row the persistence layer
+    locks and updates per line, so a budget is charged exactly once — and returned
+    sorted by :func:`lock_order_key`. V1 carries at most one budget per
+    ``(scope_kind, scope_id)`` node (ADR 0025); two *distinct* budgets on one node
+    is a configuration the schema forbids, so it is rejected with
+    :class:`ConflictingBudgetScope` rather than silently dropping one (which could
+    admit a reserve a budget should deny). Raises :class:`BudgetNotFound` if the
+    resulting set is empty: a request governed by no budget is denied by default
+    (§5.3), never vacuously admitted.
     """
-    nodes: dict[tuple[ScopeKind, str], BudgetNode] = {}
-    for node in ancestry:
-        nodes.setdefault((node.scope_kind, node.scope_id), node)
+    by_budget: dict[BudgetId, BudgetNode] = {}
+    owner: dict[tuple[ScopeKind, str], BudgetId] = {}
+    candidates = list(ancestry)
     if project is not None:
-        nodes.setdefault((project.scope_kind, project.scope_id), project)
-    if not nodes:
+        candidates.append(project)
+    for node in candidates:
+        scope = (node.scope_kind, node.scope_id)
+        held = owner.get(scope)
+        if held is not None and held != node.budget_id:
+            raise ConflictingBudgetScope(node.scope_kind, node.scope_id)
+        owner.setdefault(scope, node.budget_id)
+        by_budget.setdefault(node.budget_id, node)
+    if not by_budget:
         raise BudgetNotFound("no budget governs the request")
-    return tuple(sorted(nodes.values(), key=lock_order_key))
+    return tuple(sorted(by_budget.values(), key=lock_order_key))

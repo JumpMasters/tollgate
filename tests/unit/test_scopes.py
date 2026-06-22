@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from tollgate.domain.errors import BudgetNotFound
+from tollgate.domain.errors import BudgetNotFound, ConflictingBudgetScope
 from tollgate.domain.ids import BudgetId
 from tollgate.domain.scopes import (
     BudgetNode,
@@ -36,8 +36,15 @@ def test_scope_rank_defined_for_every_kind() -> None:
     assert sorted(ranks) == [0, 1, 2, 3]
 
 
-def _node(scope_kind: ScopeKind, scope_id: str, budget_id: str = "b") -> BudgetNode:
-    return BudgetNode(budget_id=BudgetId(budget_id), scope_kind=scope_kind, scope_id=scope_id)
+def _node(scope_kind: ScopeKind, scope_id: str, budget_id: str | None = None) -> BudgetNode:
+    # Each node carries its own budget row, so the default budget_id is distinct
+    # per (scope_kind, scope_id); pass an explicit one to model a shared or
+    # colliding budget.
+    return BudgetNode(
+        budget_id=BudgetId(budget_id or f"b-{scope_kind.value}-{scope_id}"),
+        scope_kind=scope_kind,
+        scope_id=scope_id,
+    )
 
 
 def test_budget_node_is_immutable() -> None:
@@ -100,6 +107,26 @@ def test_resolve_dedupes_repeated_nodes() -> None:
     org = _node(ScopeKind.ORG, "o1")
     result = resolve_applicable_set([org, org])
     assert result == (org,)
+
+
+def test_resolve_dedupes_by_budget_id_across_instances() -> None:
+    # De-dup is keyed on budget_id -- the row the store locks and updates per
+    # line (ADR 0025) -- so two distinct BudgetNode instances naming the same
+    # budget collapse to a single line.
+    a = _node(ScopeKind.ORG, "o1", budget_id="b1")
+    b = _node(ScopeKind.ORG, "o1", budget_id="b1")
+    assert resolve_applicable_set([a, b]) == (a,)
+
+
+def test_resolve_rejects_two_distinct_budgets_on_one_node() -> None:
+    # ADR 0025: at most one budget per (scope_kind, scope_id) node. Two distinct
+    # budgets on the same node is a configuration the schema forbids, so reaching
+    # it fails loudly rather than silently dropping one (which would let a reserve
+    # that a budget should deny slip through).
+    monthly = _node(ScopeKind.TEAM, "t1", budget_id="b-monthly")
+    rolling = _node(ScopeKind.TEAM, "t1", budget_id="b-rolling")
+    with pytest.raises(ConflictingBudgetScope, match="team:t1"):
+        resolve_applicable_set([monthly, rolling])
 
 
 def test_resolve_without_project_returns_ancestry_only() -> None:

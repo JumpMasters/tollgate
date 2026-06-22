@@ -34,6 +34,20 @@ class BudgetNotFound(TollgateError):
     """No budget governs the requested scope."""
 
 
+class ConflictingBudgetScope(TollgateError):
+    """More than one distinct budget resolved for a single scope node.
+
+    V1 enforces at most one budget per ``(scope_kind, scope_id)`` node (ADR 0025),
+    and the schema constraint forbids two, so reaching this signals that invariant
+    was violated upstream. The offending node is named.
+    """
+
+    def __init__(self, scope_kind: str, scope_id: str) -> None:
+        super().__init__(f"multiple budgets resolved for scope {scope_kind}:{scope_id}")
+        self.scope_kind = scope_kind
+        self.scope_id = scope_id
+
+
 class UnknownModel(TollgateError):
     """The requested (provider, model) pair is absent from the price book."""
 
