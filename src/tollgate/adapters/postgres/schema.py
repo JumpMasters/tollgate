@@ -18,6 +18,8 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     MetaData,
+    Numeric,
+    PrimaryKeyConstraint,
     Table,
     Text,
     UniqueConstraint,
@@ -96,4 +98,23 @@ api_credential = Table(
     _enum_check("scope_kind", SCOPE_KINDS, "scope_kind"),
     _enum_check("status", CREDENTIAL_STATUSES, "status"),
     UniqueConstraint("token_hash"),
+)
+
+price_book = Table(
+    "price_book",
+    metadata,
+    Column("version", Text, primary_key=True),
+    Column("published_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+price = Table(
+    "price",
+    metadata,
+    Column("price_book_version", Text, ForeignKey("price_book.version"), nullable=False),
+    Column("provider", Text, nullable=False),
+    Column("model", Text, nullable=False),
+    Column("input_micro_per_token", Numeric, nullable=False),
+    Column("output_micro_per_token", Numeric, nullable=False),
+    Column("cached_input_micro_per_token", Numeric, nullable=False),
+    PrimaryKeyConstraint("price_book_version", "provider", "model"),
 )
