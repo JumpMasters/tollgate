@@ -7,6 +7,7 @@ swapped without touching handler logic.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Protocol
 
 from tollgate.domain.ids import BudgetId, ReservationId
@@ -19,21 +20,29 @@ class CounterStore(Protocol):
     a reserve that would breach a limit must fail rather than overshoot.
     """
 
-    async def reserve(self, budget_id: BudgetId, period_start: str, amount_micro: int) -> bool:
+    async def ensure_period(self, budget_id: BudgetId, period_start: datetime) -> None:
+        """Lazily create the period's balance row, seeded from the budget's limit.
+
+        Idempotent (``INSERT … ON CONFLICT DO NOTHING``) so concurrent first-reservers
+        in a new period converge on one row rather than failing (§5.3, §5.5).
+        """
+        ...
+
+    async def reserve(self, budget_id: BudgetId, period_start: datetime, amount_micro: int) -> bool:
         """Reserve ``amount_micro`` against a budget node; return whether it fit."""
         ...
 
     async def commit(
         self,
         budget_id: BudgetId,
-        period_start: str,
+        period_start: datetime,
         reserved_micro: int,
         actual_micro: int,
     ) -> None:
         """Move a reservation's estimate to committed, recording any overage."""
         ...
 
-    async def release(self, budget_id: BudgetId, period_start: str, amount_micro: int) -> None:
+    async def release(self, budget_id: BudgetId, period_start: datetime, amount_micro: int) -> None:
         """Release a held reservation's estimate back to the node."""
         ...
 
