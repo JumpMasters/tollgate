@@ -25,6 +25,7 @@ MODULES = [
     "tollgate.adapters.postgres",
     "tollgate.adapters.postgres.engine",
     "tollgate.adapters.postgres.identifiers",
+    "tollgate.adapters.postgres.schema",
     "tollgate.adapters.integrations",
     "tollgate.api",
     "tollgate.api.app",
