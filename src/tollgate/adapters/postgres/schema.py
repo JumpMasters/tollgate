@@ -95,5 +95,5 @@ api_credential = Table(
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     _enum_check("scope_kind", SCOPE_KINDS, "scope_kind"),
     _enum_check("status", CREDENTIAL_STATUSES, "status"),
-    UniqueConstraint("token_hash", name="token_hash"),
+    UniqueConstraint("token_hash"),
 )
