@@ -213,3 +213,34 @@ reservation_line = Table(
     ),
     PrimaryKeyConstraint("reservation_id", "budget_id", "period_start"),
 )
+
+ledger = Table(
+    "ledger",
+    metadata,
+    Column("entry_id", Text, primary_key=True),
+    Column("ts", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("kind", Text, nullable=False),
+    Column("budget_id", Text, ForeignKey("budget.budget_id"), nullable=False),
+    Column("period_start", DateTime(timezone=True), nullable=False),
+    Column("reservation_id", Text, ForeignKey("reservation.reservation_id"), nullable=True),
+    Column("delta_reserved_micro", BigInteger, nullable=False, server_default=text("0")),
+    Column("delta_committed_micro", BigInteger, nullable=False, server_default=text("0")),
+    Column("delta_overage_micro", BigInteger, nullable=False, server_default=text("0")),
+    Column("actual_input_tokens", BigInteger, nullable=True),
+    Column("actual_output_tokens", BigInteger, nullable=True),
+    Column("provider", Text, nullable=True),
+    Column("price_book_version", Text, nullable=True),
+    Column("ref", Text, nullable=True),
+    _enum_check("kind", LEDGER_KINDS, "kind"),
+    Index("ix_ledger_budget_id_ts", "budget_id", "ts"),
+)
+
+idempotency_key = Table(
+    "idempotency_key",
+    metadata,
+    Column("key", Text, primary_key=True),
+    Column("command_fingerprint", Text, nullable=False),
+    Column("status", Text, nullable=True),
+    Column("response", JSONB, nullable=True),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
