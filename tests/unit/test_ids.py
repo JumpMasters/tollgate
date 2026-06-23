@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from tollgate.domain.ids import (
     BudgetId,
+    CredentialId,
     LedgerEntryId,
     OrgId,
     PrincipalId,
@@ -23,3 +24,4 @@ def test_newtypes_wrap_their_value() -> None:
     assert ReservationId("r1") == "r1"
     assert PrincipalId("pr1") == "pr1"
     assert LedgerEntryId("l1") == "l1"
+    assert CredentialId("c1") == "c1"

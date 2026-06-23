@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from tollgate.domain.errors import (
+    AuthenticationFailed,
     BudgetNotFound,
     ConflictingBudgetScope,
     EnforcementUnavailable,
     IdempotencyKeyReuse,
     InsufficientBudget,
     ReservationNotHeld,
+    ScopeNotAuthorized,
     TollgateError,
     UnknownModel,
 )
@@ -23,6 +25,8 @@ def test_every_error_descends_from_base() -> None:
         IdempotencyKeyReuse,
         ReservationNotHeld,
         ConflictingBudgetScope,
+        AuthenticationFailed,
+        ScopeNotAuthorized,
     ):
         assert issubclass(exc, TollgateError)
 
@@ -52,3 +56,16 @@ def test_enforcement_unavailable_is_raisable() -> None:
         raise EnforcementUnavailable("datastore down")
     except TollgateError as exc:
         assert "datastore down" in str(exc)
+
+
+def test_scope_not_authorized_names_the_target() -> None:
+    err = ScopeNotAuthorized("project:proj-1")
+    assert err.scope == "project:proj-1"
+    assert "project:proj-1" in str(err)
+
+
+def test_authentication_failed_is_raisable() -> None:
+    try:
+        raise AuthenticationFailed
+    except TollgateError as exc:
+        assert isinstance(exc, AuthenticationFailed)

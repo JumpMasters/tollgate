@@ -44,8 +44,8 @@ NAMING_CONVENTION = {
 metadata = MetaData(naming_convention=NAMING_CONVENTION)
 
 #: Allowed values for the enum-like text columns. Single source for the CHECK SQL;
-#: SCOPE_KINDS and RESERVATION_STATUSES are asserted equal to the domain enums by a
-#: unit test (PERIOD_KINDS / CREDENTIAL_STATUSES / LEDGER_KINDS have no domain enum yet).
+#: SCOPE_KINDS, RESERVATION_STATUSES, LEDGER_KINDS and CREDENTIAL_STATUSES are asserted equal to
+#: their domain enums by a unit test (PERIOD_KINDS has no domain enum yet).
 SCOPE_KINDS = ("org", "team", "user", "project")
 PERIOD_KINDS = ("calendar_month", "rolling_days")
 CREDENTIAL_STATUSES = ("active", "revoked")
