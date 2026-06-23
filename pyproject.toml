@@ -111,13 +111,14 @@ forbidden_modules = [
 ]
 
 [[tool.importlinter.contracts]]
-name = "application depends only on domain (declares ports; never imports concretes)"
+name = "application depends only on domain (declares ports; never imports concretes or config)"
 type = "forbidden"
 source_modules = ["tollgate.application"]
 forbidden_modules = [
     "tollgate.adapters",
     "tollgate.api",
     "tollgate.workers",
+    "tollgate.config",
 ]
 
 [[tool.importlinter.contracts]]
