@@ -85,3 +85,47 @@ async def test_concurrent_reserves_admit_exactly_the_headroom(
     # the rest fail definitively with no retry. committed ≤ limit holds by construction.
     assert sum(1 for ok in results if ok) == 3
     assert await _reserved(committing_engine, "b-org") == 900
+
+
+async def test_sibling_reserves_serialize_on_shared_parents_without_deadlock(
+    committing_engine: AsyncEngine,
+) -> None:
+    # Two sibling users share BOTH parent rows (org and team). The team is the tightest parent
+    # (limit 1000); org and the users are roomy. Every reserve must take org (rank 0) then team
+    # (rank 1) then its own user (rank 2) — two SHARED rows acquired in one canonical order, so
+    # no overlapping pair can form a lock cycle. Without deterministic ordering this is the
+    # classic sibling deadlock; with it, the gather simply completes.
+    await _seed_budget(
+        committing_engine, budget_id="b-org", scope_kind="org", scope_id="o1", limit=1_000_000
+    )
+    await _seed_budget(
+        committing_engine, budget_id="b-team", scope_kind="team", scope_id="tm", limit=1000
+    )
+    await _seed_budget(
+        committing_engine, budget_id="b-u1", scope_kind="user", scope_id="u1", limit=1_000_000
+    )
+    await _seed_budget(
+        committing_engine, budget_id="b-u2", scope_kind="user", scope_id="u2", limit=1_000_000
+    )
+    org = BudgetNode(BudgetId("b-org"), ScopeKind.ORG, "o1")
+    team = BudgetNode(BudgetId("b-team"), ScopeKind.TEAM, "tm")
+    # Each principal passes its set in a different, scrambled input order — reserve_tx sorts.
+    set_a = [BudgetNode(BudgetId("b-u1"), ScopeKind.USER, "u1"), team, org]
+    set_b = [org, BudgetNode(BudgetId("b-u2"), ScopeKind.USER, "u2"), team]
+    results = await asyncio.gather(
+        *(
+            _attempt_reserve(committing_engine, set_a if i % 2 == 0 else set_b, 200)
+            for i in range(8)
+        )
+    )
+    # The team (1000 / 200 = 5) binds across both siblings, most-restrictive.
+    assert sum(1 for ok in results if ok) == 5
+    team_reserved = await _reserved(committing_engine, "b-team")
+    org_reserved = await _reserved(committing_engine, "b-org")
+    u1_reserved = await _reserved(committing_engine, "b-u1")
+    u2_reserved = await _reserved(committing_engine, "b-u2")
+    assert team_reserved == 1000  # the tightest shared parent binds
+    # All-or-nothing: every success reserved org + team + exactly one user line by the estimate,
+    # and every denial reserved none — so all three counts agree.
+    assert org_reserved == 1000
+    assert u1_reserved + u2_reserved == 1000
