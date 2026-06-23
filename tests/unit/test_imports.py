@@ -14,6 +14,7 @@ MODULES = [
     "tollgate.domain.pricing",
     "tollgate.domain.ids",
     "tollgate.domain.errors",
+    "tollgate.domain.records",
     "tollgate.domain.reservations",
     "tollgate.domain.scopes",
     "tollgate.domain.commands",
