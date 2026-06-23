@@ -43,10 +43,14 @@ async def _seed_budget(
 
 
 async def _attempt_reserve(engine: AsyncEngine, nodes: list[BudgetNode], amount_micro: int) -> bool:
-    """Reserve in its own transaction; commit on success, roll back on denial."""
+    """Own transaction: commit on success, roll back on denial or unexpected error."""
     async with engine.connect() as conn:
         txn = await conn.begin()
-        outcome = await PostgresReserveTransaction(conn).reserve(nodes, PERIOD, amount_micro)
+        try:
+            outcome = await PostgresReserveTransaction(conn).reserve(nodes, PERIOD, amount_micro)
+        except Exception:
+            await txn.rollback()
+            raise
         if outcome.ok:
             await txn.commit()
         else:
