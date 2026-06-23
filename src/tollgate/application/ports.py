@@ -19,6 +19,7 @@ from tollgate.domain.records import (
     ReservationRecord,
 )
 from tollgate.domain.reservations import ReservationStatus
+from tollgate.domain.scopes import BudgetNode, ReserveOutcome
 
 
 class CounterStore(Protocol):
@@ -100,4 +101,22 @@ class LedgerRepository(Protocol):
 
     async def append(self, entries: Sequence[LedgerEntry]) -> None:
         """Append one or more ledger rows in the current transaction (never summed here)."""
+        ...
+
+
+class ReserveTransaction(Protocol):
+    """Multi-budget, all-or-nothing guarded reserve across an applicable set (§5.2/§5.3)."""
+
+    async def reserve(
+        self,
+        nodes: Sequence[BudgetNode],
+        period_start: datetime,
+        amount_micro: int,
+    ) -> ReserveOutcome:
+        """Reserve ``amount_micro`` on every applicable node in lock order, all-or-nothing.
+
+        Returns ``ReserveOutcome(ok=True)`` iff every node had headroom. On the first node
+        without headroom returns ``ReserveOutcome(ok=False, binding_node=node)`` and leaves the
+        walk's earlier reserves in place for the caller's transaction to roll back (§5.3).
+        """
         ...
