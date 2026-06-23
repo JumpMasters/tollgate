@@ -34,6 +34,7 @@ The format follows Michael Nygard's
 - [0023 — Async Alembic on asyncpg, no separate sync migration driver](0023-async-alembic-asyncpg-no-psycopg.md)
 - [0024 — Baseline migration builds the schema from the canonical MetaData](0024-metadata-create-all-baseline-migration.md)
 - [0025 — At most one budget per scope node in V1](0025-one-budget-per-scope-node.md)
+- [0026 — Keyed deterministic token hash for credential lookup](0026-keyed-deterministic-token-hash.md)
 
 ## Adding a record
 

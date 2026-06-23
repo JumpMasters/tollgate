@@ -63,3 +63,19 @@ class IdempotencyKeyReuse(TollgateError):
 
 class ReservationNotHeld(TollgateError):
     """A terminal command targeted a reservation that is no longer held."""
+
+
+class AuthenticationFailed(TollgateError):
+    """A presented bearer token matched no active credential (§5.0).
+
+    A missing, revoked, or otherwise unusable token is rejected identically, so the result never
+    reveals which credentials exist.
+    """
+
+
+class ScopeNotAuthorized(TollgateError):
+    """A credential tried to act on or read a node outside its scope (§5.0)."""
+
+    def __init__(self, scope: str) -> None:
+        super().__init__(f"credential not authorized for {scope}")
+        self.scope = scope

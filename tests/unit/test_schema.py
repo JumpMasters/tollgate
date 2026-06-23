@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from tollgate.adapters.postgres.schema import (
+    CREDENTIAL_STATUSES,
     LEDGER_KINDS,
     RESERVATION_STATUSES,
     SCOPE_KINDS,
     metadata,
 )
+from tollgate.domain.credentials import CredentialStatus
 from tollgate.domain.records import LedgerKind
 from tollgate.domain.reservations import ReservationStatus
 from tollgate.domain.scopes import ScopeKind
@@ -23,6 +25,10 @@ def test_reservation_statuses_match_the_domain_enum() -> None:
 
 def test_ledger_kinds_match_the_domain_enum() -> None:
     assert set(LEDGER_KINDS) == {kind.value for kind in LedgerKind}
+
+
+def test_credential_statuses_match_the_domain_enum() -> None:
+    assert set(CREDENTIAL_STATUSES) == {status.value for status in CredentialStatus}
 
 
 def test_metadata_holds_every_expected_table() -> None:
