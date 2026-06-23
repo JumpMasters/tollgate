@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 import pytest
 
 from tollgate.domain.credentials import (
@@ -55,6 +57,6 @@ def test_credential_and_principal_carry_their_fields() -> None:
     ],
 )
 def test_authorizes_covers_at_or_below_scope(
-    scope_kind: ScopeKind, scope_id: str, target: dict[ScopeKind, str], expected: bool
+    scope_kind: ScopeKind, scope_id: str, target: Mapping[ScopeKind, str], expected: bool
 ) -> None:
     assert authorizes(_cred(scope_kind, scope_id), target) is expected

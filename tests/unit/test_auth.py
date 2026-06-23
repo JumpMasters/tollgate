@@ -1,4 +1,4 @@
-"""Tests for credential authentication: the keyed token hash (and, later, the authenticator)."""
+"""Tests for credential authentication: the keyed token hash and the authenticator."""
 
 from __future__ import annotations
 
@@ -39,7 +39,8 @@ def test_hash_token_is_a_sha256_hex_digest() -> None:
 
 
 def test_hash_token_never_contains_the_raw_token() -> None:
-    assert "tok" not in hash_token("tok", secret=_SECRET)
+    token = "deadbeefcafe"
+    assert token not in hash_token(token, secret=_SECRET)
 
 
 class _FakeCredentials:

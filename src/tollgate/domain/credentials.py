@@ -74,5 +74,9 @@ def authorizes(credential: Credential, target_ancestry: Mapping[ScopeKind, str])
     one covers its team and that team's users but no project (a project has no team ancestor); a
     user- or project-scoped credential covers only its own node. This is the "at or below the
     credential's scope" rule of §5.0, expressed without walking the tree.
+
+    The caller must build ``target_ancestry`` from trusted, server-derived ancestry
+    (the principal's resolved tree and the looked-up project's org), never from
+    request-asserted scope ids — this predicate cannot defend against a forged map.
     """
     return target_ancestry.get(credential.scope_kind) == credential.scope_id
