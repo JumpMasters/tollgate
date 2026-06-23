@@ -15,6 +15,7 @@ from tollgate.application.ports import (
     IdempotencyRepository,
     LedgerRepository,
     ReservationRepository,
+    ReserveTransaction,
 )
 from tollgate.domain.ids import BudgetId, LedgerEntryId, PrincipalId, ReservationId
 from tollgate.domain.records import (
@@ -26,6 +27,7 @@ from tollgate.domain.records import (
     ReservationRecord,
 )
 from tollgate.domain.reservations import ReservationStatus
+from tollgate.domain.scopes import BudgetNode, ReserveOutcome, ScopeKind
 
 _PERIOD = datetime(2026, 6, 1, tzinfo=UTC)
 
@@ -73,6 +75,13 @@ class _FakeIdempotencyRepository:
 class _FakeLedgerRepository:
     async def append(self, entries: Sequence[LedgerEntry]) -> None:
         return None
+
+
+class _FakeReserveTransaction:
+    async def reserve(
+        self, nodes: Sequence[BudgetNode], period_start: datetime, amount_micro: int
+    ) -> ReserveOutcome:
+        return ReserveOutcome(ok=True)
 
 
 async def test_fake_conforms_to_counter_store() -> None:
@@ -128,3 +137,10 @@ async def test_fakes_conform_to_the_repository_ports() -> None:
             )
         ]
     )
+
+
+async def test_fake_conforms_to_reserve_transaction() -> None:
+    gate: ReserveTransaction = _FakeReserveTransaction()
+    outcome = await gate.reserve([BudgetNode(BudgetId("b1"), ScopeKind.ORG, "o1")], _PERIOD, 100)
+    assert outcome.ok is True
+    assert outcome.binding_node is None

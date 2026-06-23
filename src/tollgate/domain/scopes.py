@@ -64,6 +64,21 @@ class BudgetNode:
     scope_id: str
 
 
+@dataclass(frozen=True, slots=True)
+class ReserveOutcome:
+    """The result of a multi-budget reserve across an applicable set (§5.2/§5.3).
+
+    ``ok`` is true iff every node had headroom and was reserved. On denial ``ok`` is
+    false and ``binding_node`` names the most-restrictive node that lacked headroom
+    (most-restrictive resolution, §5.3); the all-or-nothing rollback that discards the
+    partial reserves on the earlier nodes is the command envelope's (plans 09-10), not
+    this value's.
+    """
+
+    ok: bool
+    binding_node: BudgetNode | None = None
+
+
 def lock_order_key(node: BudgetNode) -> tuple[int, str]:
     """Canonical sort key for deadlock-free lock acquisition (§5.3).
 

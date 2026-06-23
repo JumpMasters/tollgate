@@ -30,6 +30,7 @@ MODULES = [
     "tollgate.adapters.postgres.idempotency_repo",
     "tollgate.adapters.postgres.ledger_repo",
     "tollgate.adapters.postgres.reservations_repo",
+    "tollgate.adapters.postgres.reserve_tx",
     "tollgate.adapters.integrations",
     "tollgate.api",
     "tollgate.api.app",
