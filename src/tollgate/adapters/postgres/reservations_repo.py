@@ -49,6 +49,8 @@ class PostgresReservationRepository:
                 labels=dict(reservation.labels),
             )
         )
+        # A reservation always has >=1 line (a request governed by no budget is
+        # denied, plan 07); the guard only skips an empty executemany.
         if lines:
             await self._conn.execute(
                 insert(reservation_line),

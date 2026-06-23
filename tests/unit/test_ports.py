@@ -88,6 +88,8 @@ async def test_fakes_conform_to_the_repository_ports() -> None:
     idempotency: IdempotencyRepository = _FakeIdempotencyRepository()
     ledger: LedgerRepository = _FakeLedgerRepository()
 
+    # The structural conformance check is the Protocol-typed assignment above
+    # (mypy --strict verifies it); the calls below only smoke that nothing throws.
     record = ReservationRecord(
         reservation_id=ReservationId("r1"),
         idempotency_key="idem-1",

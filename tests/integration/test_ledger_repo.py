@@ -88,3 +88,43 @@ async def test_append_empty_is_a_noop(db_conn: AsyncConnection) -> None:
     repo = PostgresLedgerRepository(db_conn)
     await repo.append([])
     assert await _ledger_rows(db_conn) == []
+
+
+async def test_append_round_trips_all_provenance_columns(db_conn: AsyncConnection) -> None:
+    await _seed_budget(db_conn)
+    repo = PostgresLedgerRepository(db_conn)
+    await repo.append(
+        [
+            LedgerEntry(
+                entry_id=LedgerEntryId("e1"),
+                kind=LedgerKind.COMMIT_ADJUST,
+                budget_id=BudgetId("b1"),
+                period_start=PERIOD,
+                reservation_id=None,
+                delta_committed_micro=80,
+                delta_overage_micro=20,
+                actual_input_tokens=1000,
+                actual_output_tokens=200,
+                provider="anthropic",
+                price_book_version="v1",
+                ref="reap-1",
+            )
+        ]
+    )
+    row = (
+        await db_conn.execute(
+            text(
+                "SELECT period_start, actual_input_tokens, actual_output_tokens, "
+                "provider, price_book_version, ref, delta_committed_micro, delta_overage_micro "
+                "FROM ledger WHERE entry_id = 'e1'"
+            )
+        )
+    ).one()
+    assert row.period_start == PERIOD
+    assert row.actual_input_tokens == 1000
+    assert row.actual_output_tokens == 200
+    assert row.provider == "anthropic"
+    assert row.price_book_version == "v1"
+    assert row.ref == "reap-1"
+    assert row.delta_committed_micro == 80
+    assert row.delta_overage_micro == 20
