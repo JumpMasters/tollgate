@@ -12,12 +12,19 @@ from typing import Any
 
 from tollgate.application.ports import (
     CounterStore,
+    CredentialRepository,
     IdempotencyRepository,
     LedgerRepository,
     ReservationRepository,
     ReserveTransaction,
 )
-from tollgate.domain.ids import BudgetId, LedgerEntryId, PrincipalId, ReservationId
+from tollgate.domain.credentials import Credential, Principal
+from tollgate.domain.ids import (
+    BudgetId,
+    LedgerEntryId,
+    PrincipalId,
+    ReservationId,
+)
 from tollgate.domain.records import (
     ClaimOutcome,
     IdempotencyClaim,
@@ -144,3 +151,17 @@ async def test_fake_conforms_to_reserve_transaction() -> None:
     outcome = await gate.reserve([BudgetNode(BudgetId("b1"), ScopeKind.ORG, "o1")], _PERIOD, 100)
     assert outcome.ok is True
     assert outcome.binding_node is None
+
+
+class _FakeCredentialRepository:
+    async def find_by_token_hash(self, token_hash: str) -> Credential | None:
+        return None
+
+    async def load_principal(self, principal_id: PrincipalId) -> Principal | None:
+        return None
+
+
+async def test_fake_conforms_to_credential_repository() -> None:
+    repo: CredentialRepository = _FakeCredentialRepository()
+    assert await repo.find_by_token_hash("hash") is None
+    assert await repo.load_principal(PrincipalId("u1")) is None

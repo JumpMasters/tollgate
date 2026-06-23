@@ -11,7 +11,8 @@ from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import Any, Protocol
 
-from tollgate.domain.ids import BudgetId, ReservationId
+from tollgate.domain.credentials import Credential, Principal
+from tollgate.domain.ids import BudgetId, PrincipalId, ReservationId
 from tollgate.domain.records import (
     IdempotencyClaim,
     LedgerEntry,
@@ -119,4 +120,22 @@ class ReserveTransaction(Protocol):
         without headroom returns ``ReserveOutcome(ok=False, binding_node=node)`` and leaves the
         walk's earlier reserves in place for the caller's transaction to roll back (§5.3).
         """
+        ...
+
+
+class CredentialRepository(Protocol):
+    """Read-only lookups behind credential authentication (§5.0).
+
+    Authentication runs *before* the command transaction: it hashes the presented token, finds
+    the matching credential, and derives the principal. The repository returns rows faithfully —
+    a *revoked* credential is still returned — so the authenticator, not the store, enforces the
+    active-only rule and the store stays a thin, testable lookup.
+    """
+
+    async def find_by_token_hash(self, token_hash: str) -> Credential | None:
+        """Return the credential whose ``token_hash`` matches, or ``None`` if none does."""
+        ...
+
+    async def load_principal(self, principal_id: PrincipalId) -> Principal | None:
+        """Resolve a principal to its ``user -> team -> org`` identity, or ``None`` if absent."""
         ...
