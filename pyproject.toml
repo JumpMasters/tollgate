@@ -19,7 +19,7 @@ dependencies = [
     # it on every platform.
     "greenlet>=3.5.3",
     "alembic>=1.18.5",
-    "uvicorn>=0.50.2",
+    "uvicorn>=0.51.0",
     "uuid-utils>=0.17.0",
 ]
 
