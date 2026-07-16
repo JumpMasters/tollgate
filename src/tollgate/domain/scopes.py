@@ -22,7 +22,7 @@ from enum import StrEnum
 from typing import Final
 
 from tollgate.domain.errors import BudgetNotFound, ConflictingBudgetScope
-from tollgate.domain.ids import BudgetId
+from tollgate.domain.ids import BudgetId, OrgId
 
 
 class ScopeKind(StrEnum):
@@ -77,6 +77,21 @@ class ReserveOutcome:
 
     ok: bool
     binding_node: BudgetNode | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedProject:
+    """A request's named project resolved server-side for authorization and the applicable set.
+
+    ``org_id`` is the project's owning org, looked up server-side so the reserve can build the
+    authorization ancestry ``{ORG: org_id, PROJECT: project_id}`` from trusted data — never the
+    request's assertion (the §5.0 trust caveat in ``authorizes``). ``budget`` is the project's
+    budget node when it carries one, or ``None``: a project may be authorized yet contribute no
+    budget to the applicable set.
+    """
+
+    org_id: OrgId
+    budget: BudgetNode | None
 
 
 def lock_order_key(node: BudgetNode) -> tuple[int, str]:
