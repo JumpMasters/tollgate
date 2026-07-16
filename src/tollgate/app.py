@@ -9,8 +9,12 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 
+from tollgate.adapters.clock import SystemClock
 from tollgate.adapters.postgres.engine import build_engine
+from tollgate.adapters.postgres.identifiers import Uuid7IdGenerator
+from tollgate.adapters.postgres.unit_of_work import PostgresUnitOfWork
 from tollgate.api.app import create_api
+from tollgate.application.handlers.reserve import ReserveHandler
 from tollgate.config.settings import Settings, load_settings
 
 
@@ -24,4 +28,10 @@ def build_app(settings: Settings | None = None) -> FastAPI:
     app = create_api()
     app.state.engine = engine
     app.state.settings = settings
+    app.state.reserve_handler = ReserveHandler(
+        uow=PostgresUnitOfWork(engine),
+        clock=SystemClock(),
+        ids=Uuid7IdGenerator(),
+        reservation_ttl_seconds=settings.reservation_ttl_seconds,
+    )
     return app
