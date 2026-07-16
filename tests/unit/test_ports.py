@@ -6,25 +6,37 @@ verify a concrete implementation conforms.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Any
 
 from tollgate.application.ports import (
+    BudgetRepository,
+    Clock,
+    CommandContext,
     CounterStore,
     CredentialRepository,
     IdempotencyRepository,
+    IdGenerator,
     LedgerRepository,
+    PriceBookRepository,
     ReservationRepository,
     ReserveTransaction,
+    UnitOfWork,
 )
 from tollgate.domain.credentials import Credential, Principal
 from tollgate.domain.ids import (
     BudgetId,
     LedgerEntryId,
+    OrgId,
     PrincipalId,
+    ProjectId,
     ReservationId,
+    TeamId,
+    UserId,
 )
+from tollgate.domain.pricing import PricedModel
 from tollgate.domain.records import (
     ClaimOutcome,
     IdempotencyClaim,
@@ -34,7 +46,7 @@ from tollgate.domain.records import (
     ReservationRecord,
 )
 from tollgate.domain.reservations import ReservationStatus
-from tollgate.domain.scopes import BudgetNode, ReserveOutcome, ScopeKind
+from tollgate.domain.scopes import BudgetNode, ReserveOutcome, ResolvedProject, ScopeKind
 
 _PERIOD = datetime(2026, 6, 1, tzinfo=UTC)
 
@@ -165,3 +177,77 @@ async def test_fake_conforms_to_credential_repository() -> None:
     repo: CredentialRepository = _FakeCredentialRepository()
     assert await repo.find_by_token_hash("hash") is None
     assert await repo.load_principal(PrincipalId("u1")) is None
+
+
+def _principal() -> Principal:
+    return Principal(user_id=UserId("u1"), team_id=TeamId("t1"), org_id=OrgId("o1"))
+
+
+class _FakeClock:
+    def now(self) -> datetime:
+        return _PERIOD
+
+
+class _FakeIds:
+    def new_reservation_id(self) -> ReservationId:
+        return ReservationId("r1")
+
+    def new_ledger_entry_id(self) -> LedgerEntryId:
+        return LedgerEntryId("e1")
+
+
+class _FakePriceBook:
+    async def resolve_price(self, provider: str, model: str) -> PricedModel | None:
+        return None
+
+
+class _FakeBudgets:
+    async def find_ancestry_budgets(self, principal: Principal) -> Sequence[BudgetNode]:
+        return ()
+
+    async def find_project(self, project_id: ProjectId) -> ResolvedProject | None:
+        return None
+
+
+class _FakeCommandContext:
+    def __init__(self) -> None:
+        self.prices: PriceBookRepository = _FakePriceBook()
+        self.budgets: BudgetRepository = _FakeBudgets()
+        self.idempotency: IdempotencyRepository = _FakeIdempotencyRepository()
+        self.reservations: ReservationRepository = _FakeReservationRepository()
+        self.ledger: LedgerRepository = _FakeLedgerRepository()
+        self.reserve_tx: ReserveTransaction = _FakeReserveTransaction()
+
+
+class _FakeUnitOfWork:
+    @asynccontextmanager
+    async def begin(self) -> AsyncIterator[CommandContext]:
+        yield _FakeCommandContext()
+
+
+def test_fakes_conform_to_clock_and_id_generator() -> None:
+    clock: Clock = _FakeClock()
+    ids: IdGenerator = _FakeIds()
+    assert clock.now() == _PERIOD
+    assert ids.new_reservation_id() == "r1"
+    assert ids.new_ledger_entry_id() == "e1"
+
+
+async def test_fakes_conform_to_price_and_budget_repositories() -> None:
+    prices: PriceBookRepository = _FakePriceBook()
+    budgets: BudgetRepository = _FakeBudgets()
+    assert await prices.resolve_price("anthropic", "claude") is None
+    assert await budgets.find_ancestry_budgets(_principal()) == ()
+    assert await budgets.find_project(ProjectId("p1")) is None
+
+
+async def test_fake_conforms_to_unit_of_work() -> None:
+    uow: UnitOfWork = _FakeUnitOfWork()
+    async with uow.begin() as ctx:
+        context: CommandContext = ctx
+        assert await context.prices.resolve_price("a", "b") is None
+        assert await context.budgets.find_ancestry_budgets(_principal()) == ()
+        outcome = await context.reserve_tx.reserve(
+            [BudgetNode(BudgetId("b1"), ScopeKind.ORG, "o1")], _PERIOD, 1
+        )
+        assert outcome.ok is True
