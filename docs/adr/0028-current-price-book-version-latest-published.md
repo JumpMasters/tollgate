@@ -29,3 +29,7 @@ reserve then denies with `UnknownModel`).
 - `published_at` ties are unspecified; in practice publish times are distinct. If
   ties ever matter, a monotonic version sequence can break them — a future, additive
   refinement.
+- The lookup is **per pair**: a `(provider, model)` omitted from a newer version still
+  resolves to the latest version that priced it, rather than becoming unknown.
+  Retiring a model therefore requires an explicit signal (out of scope here), not
+  mere omission from the newest book.

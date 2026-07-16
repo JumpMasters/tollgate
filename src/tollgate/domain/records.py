@@ -73,9 +73,11 @@ class ReservationLineRecord:
 class LedgerEntry:
     """One append-only ledger row (§5.2).
 
-    The three deltas default to zero; the token/price provenance fields are recorded on
-    commit/overage entries and left ``None`` elsewhere. ``reservation_id`` is nullable so a
-    ``grace_backfill`` entry (which has no live reservation) can still be recorded.
+    The three deltas default to zero. The token counts are recorded on commit/overage
+    entries and left ``None`` elsewhere; ``provider`` and ``price_book_version`` are also
+    stamped on reserve entries, pinning the cost basis the estimate was priced against.
+    ``reservation_id`` is nullable so a ``grace_backfill`` entry (which has no live
+    reservation) can still be recorded.
     """
 
     entry_id: LedgerEntryId
