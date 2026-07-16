@@ -10,6 +10,7 @@ from hypothesis import strategies as st
 
 from tollgate.domain.pricing import (
     ModelPrice,
+    PricedModel,
     Reconciliation,
     actual_micro,
     estimate_micro,
@@ -144,3 +145,16 @@ def test_reconcile_conserves_actual_and_caps_committed(reserved: int, actual: in
     assert result.committed_micro <= reserved
     assert result.committed_micro <= actual
     assert result.overage_micro >= 0
+
+
+def test_priced_model_carries_its_version_and_price() -> None:
+    price = ModelPrice(
+        provider="anthropic",
+        model="claude",
+        input_micro_per_token=Decimal("1"),
+        output_micro_per_token=Decimal("2"),
+        cached_input_micro_per_token=Decimal("0.5"),
+    )
+    priced = PricedModel(version="2026-06-22", price=price)
+    assert priced.version == "2026-06-22"
+    assert priced.price is price

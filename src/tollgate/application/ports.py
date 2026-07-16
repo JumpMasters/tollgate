@@ -8,11 +8,19 @@ logic.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from contextlib import AbstractAsyncContextManager
 from datetime import datetime
 from typing import Any, Protocol
 
 from tollgate.domain.credentials import Credential, Principal
-from tollgate.domain.ids import BudgetId, PrincipalId, ReservationId
+from tollgate.domain.ids import (
+    BudgetId,
+    LedgerEntryId,
+    PrincipalId,
+    ProjectId,
+    ReservationId,
+)
+from tollgate.domain.pricing import PricedModel
 from tollgate.domain.records import (
     IdempotencyClaim,
     LedgerEntry,
@@ -20,7 +28,7 @@ from tollgate.domain.records import (
     ReservationRecord,
 )
 from tollgate.domain.reservations import ReservationStatus
-from tollgate.domain.scopes import BudgetNode, ReserveOutcome
+from tollgate.domain.scopes import BudgetNode, ReserveOutcome, ResolvedProject
 
 
 class CounterStore(Protocol):
@@ -138,4 +146,92 @@ class CredentialRepository(Protocol):
 
     async def load_principal(self, principal_id: PrincipalId) -> Principal | None:
         """Resolve a principal to its ``user -> team -> org`` identity, or ``None`` if absent."""
+        ...
+
+
+class Clock(Protocol):
+    """A source of the current time, injected so handlers stay deterministic under test."""
+
+    def now(self) -> datetime:
+        """Return the current instant as a timezone-aware UTC ``datetime``."""
+        ...
+
+
+class IdGenerator(Protocol):
+    """Mints the time-ordered (uuidv7) ids the application stamps on new rows."""
+
+    def new_reservation_id(self) -> ReservationId:
+        """Return a fresh reservation id."""
+        ...
+
+    def new_ledger_entry_id(self) -> LedgerEntryId:
+        """Return a fresh ledger entry id."""
+        ...
+
+
+class PriceBookRepository(Protocol):
+    """Resolves the current price for a ``(provider, model)`` from the versioned price book (§3)."""
+
+    async def resolve_price(self, provider: str, model: str) -> PricedModel | None:
+        """Return the current price and its version, or ``None`` if the pair is unpriced.
+
+        "Current" is the price-book version with the latest ``published_at`` (ADR 0028); the
+        returned version is stamped on the reservation so the matching commit reconciles against
+        the same immutable basis.
+        """
+        ...
+
+
+class BudgetRepository(Protocol):
+    """Reads the budget nodes a reserve gates against (§4, §5.3)."""
+
+    async def find_ancestry_budgets(self, principal: Principal) -> Sequence[BudgetNode]:
+        """Return the budgets that exist on the principal's ``org`` / ``team`` / ``user`` nodes.
+
+        Ancestry scopes without a budget are simply absent from the result; the applicable-set
+        policy (``resolve_applicable_set``) skips them.
+        """
+        ...
+
+    async def find_project(self, project_id: ProjectId) -> ResolvedProject | None:
+        """Resolve a named project to its org and optional budget node, or ``None`` if unknown.
+
+        ``None`` means no such project; the handler treats that as unauthorized rather than
+        revealing the project's (non-)existence.
+        """
+        ...
+
+
+class CommandContext(Protocol):
+    """The repository Ports bound to one command's transaction (§5).
+
+    A :class:`UnitOfWork` yields this inside an open transaction; every Port here shares the same
+    connection, so a command's resolution reads and its guarded writes commit — or roll back — as
+    one unit.
+    """
+
+    @property
+    def prices(self) -> PriceBookRepository: ...
+    @property
+    def budgets(self) -> BudgetRepository: ...
+    @property
+    def idempotency(self) -> IdempotencyRepository: ...
+    @property
+    def reservations(self) -> ReservationRepository: ...
+    @property
+    def ledger(self) -> LedgerRepository: ...
+    @property
+    def reserve_tx(self) -> ReserveTransaction: ...
+
+
+class UnitOfWork(Protocol):
+    """Brackets a command in one database transaction — the §5 envelope.
+
+    ``begin()`` opens a transaction and yields a :class:`CommandContext`; leaving the context
+    normally commits, and leaving it via an exception rolls back — so an insufficient-budget denial
+    (which raises) discards its partial reserves and its idempotency claim atomically (§5.1, §5.3).
+    """
+
+    def begin(self) -> AbstractAsyncContextManager[CommandContext]:
+        """Open the command transaction and yield its bound repositories."""
         ...

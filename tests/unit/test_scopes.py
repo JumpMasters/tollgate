@@ -7,9 +7,10 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from tollgate.domain.errors import BudgetNotFound, ConflictingBudgetScope
-from tollgate.domain.ids import BudgetId
+from tollgate.domain.ids import BudgetId, OrgId
 from tollgate.domain.scopes import (
     BudgetNode,
+    ResolvedProject,
     ScopeKind,
     lock_order_key,
     resolve_applicable_set,
@@ -166,3 +167,12 @@ def test_resolve_is_lock_ordered_and_deduped(pairs: list[tuple[ScopeKind, str]])
     scopes = [(node.scope_kind, node.scope_id) for node in result]
     assert len(scopes) == len(set(scopes))
     assert set(scopes) == {(kind, scope_id) for kind, scope_id in pairs}
+
+
+def test_resolved_project_carries_org_and_optional_budget() -> None:
+    node = BudgetNode(BudgetId("b-proj"), ScopeKind.PROJECT, "proj-1")
+    with_budget = ResolvedProject(org_id=OrgId("org-1"), budget=node)
+    assert with_budget.org_id == "org-1"
+    assert with_budget.budget is node
+    without_budget = ResolvedProject(org_id=OrgId("org-1"), budget=None)
+    assert without_budget.budget is None
