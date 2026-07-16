@@ -36,6 +36,7 @@ The format follows Michael Nygard's
 - [0025 — At most one budget per scope node in V1](0025-one-budget-per-scope-node.md)
 - [0026 — Keyed deterministic token hash for credential lookup](0026-keyed-deterministic-token-hash.md)
 - [0027 — Reserve period_start is the current UTC calendar month](0027-reserve-period-start-calendar-month.md)
+- [0028 — Current price-book version is the latest published](0028-current-price-book-version-latest-published.md)
 
 ## Adding a record
 
