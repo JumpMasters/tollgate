@@ -1,25 +1,35 @@
-"""PostgresReservationRepository: reservation persistence + the identity guard (§5.2).
+"""PostgresReservationRepository: reservation persistence + the identity guards (§5.2, §5.4).
 
 ``insert`` writes a held reservation and its per-node lines in the active command transaction.
 ``claim_terminal`` is the identity guard: an ``UPDATE … WHERE status = 'held'`` that moves the
 reservation to exactly one terminal state — the conditional ``WHERE`` is what makes a terminal
-effect exactly-once. A second claim matches zero rows (status is no longer ``held``) and
-returns ``False`` → idempotent replay / self-heal (§5.4). The multi-budget orchestration that
-decides *when* to call these lives a layer up (plans 07/09-10).
+effect exactly-once; ``claim_late_commit`` is the same mechanism for the one legal post-reap
+transition (``reaped → committed``, the §5.4 self-heal, ADR 0029). ``find`` / ``find_lines``
+read a reservation back for the terminal commands (the line view joins ``budget`` so callers
+can walk balances in the canonical lock order), and ``advance_ttl`` is the monotonic heartbeat.
+The multi-budget orchestration that decides *when* to call these lives a layer up (plans
+07/09-10).
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime
 
-from sqlalchemy import insert, update
+from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from tollgate.adapters.postgres.schema import budget, reservation_line
 from tollgate.adapters.postgres.schema import reservation as reservation_table
-from tollgate.adapters.postgres.schema import reservation_line
-from tollgate.domain.ids import ReservationId
-from tollgate.domain.records import ReservationLineRecord, ReservationRecord
+from tollgate.domain.ids import BudgetId, PrincipalId, ReservationId
+from tollgate.domain.records import (
+    ReservationLineRecord,
+    ReservationLineView,
+    ReservationRecord,
+    StoredReservation,
+)
 from tollgate.domain.reservations import ReservationStatus
+from tollgate.domain.scopes import BudgetNode, ScopeKind
 
 
 class PostgresReservationRepository:
@@ -79,3 +89,102 @@ class PostgresReservationRepository:
         )
         result = await self._conn.execute(stmt)
         return result.rowcount == 1
+
+    async def find(self, reservation_id: ReservationId) -> StoredReservation | None:
+        """Return the reservation row and its live status, or ``None`` if the id is unknown."""
+        row = (
+            await self._conn.execute(
+                select(reservation_table).where(
+                    reservation_table.c.reservation_id == reservation_id
+                )
+            )
+        ).first()
+        if row is None:
+            return None
+        record = ReservationRecord(
+            reservation_id=ReservationId(row.reservation_id),
+            idempotency_key=row.idempotency_key,
+            principal_id=PrincipalId(row.principal_id),
+            provider=row.provider,
+            model=row.model,
+            price_book_version=row.price_book_version,
+            estimated_micro=row.estimated_micro,
+            input_bound_tokens=row.input_bound_tokens,
+            max_output_tokens=row.max_output_tokens,
+            ttl_deadline=row.ttl_deadline,
+            labels=row.labels,
+        )
+        return StoredReservation(record=record, status=ReservationStatus(row.status))
+
+    async def find_lines(self, reservation_id: ReservationId) -> Sequence[ReservationLineView]:
+        """Return the reservation's lines joined with their budget nodes (§5.3, §5.4).
+
+        The join to ``budget`` recovers each line's scope, so callers can walk the balances in
+        the canonical lock order; the line's own ``period_start`` is carried because a late
+        commit replays against each line's original period (ADR 0029).
+        """
+        rows = (
+            await self._conn.execute(
+                select(
+                    reservation_line.c.budget_id,
+                    reservation_line.c.period_start,
+                    reservation_line.c.amount_micro,
+                    budget.c.scope_kind,
+                    budget.c.scope_id,
+                )
+                .select_from(
+                    reservation_line.join(
+                        budget, reservation_line.c.budget_id == budget.c.budget_id
+                    )
+                )
+                .where(reservation_line.c.reservation_id == reservation_id)
+            )
+        ).all()
+        return [
+            ReservationLineView(
+                node=BudgetNode(BudgetId(row.budget_id), ScopeKind(row.scope_kind), row.scope_id),
+                period_start=row.period_start,
+                amount_micro=row.amount_micro,
+            )
+            for row in rows
+        ]
+
+    async def claim_late_commit(self, reservation_id: ReservationId) -> bool:
+        """Move a reaped reservation to committed; return whether this caller won (ADR 0029).
+
+        The §5.4 self-heal guard: the one legal post-reap transition, claimed by the same
+        conditional-``WHERE`` mechanism as :meth:`claim_terminal`, so exactly one late commit
+        records the spend.
+        """
+        stmt = (
+            update(reservation_table)
+            .where(
+                reservation_table.c.reservation_id == reservation_id,
+                reservation_table.c.status == ReservationStatus.REAPED,
+            )
+            .values(status=ReservationStatus.COMMITTED)
+        )
+        result = await self._conn.execute(stmt)
+        return result.rowcount == 1
+
+    async def advance_ttl(
+        self, reservation_id: ReservationId, ttl_deadline: datetime
+    ) -> datetime | None:
+        """Monotonically advance a held reservation's TTL; return the resulting deadline (§5.4).
+
+        ``GREATEST`` keeps the stored deadline from ever moving backward, so a stale heartbeat
+        (an older replica's clock, a delayed retry) can never shorten a newer one — which is
+        what makes extend naturally idempotent. Returns ``None`` when the reservation is not
+        held (unknown, terminal, or reaped): there is nothing left to keep alive.
+        """
+        stmt = (
+            update(reservation_table)
+            .where(
+                reservation_table.c.reservation_id == reservation_id,
+                reservation_table.c.status == ReservationStatus.HELD,
+            )
+            .values(ttl_deadline=func.greatest(reservation_table.c.ttl_deadline, ttl_deadline))
+            .returning(reservation_table.c.ttl_deadline)
+        )
+        row = (await self._conn.execute(stmt)).first()
+        return None if row is None else row.ttl_deadline

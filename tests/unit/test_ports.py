@@ -36,14 +36,16 @@ from tollgate.domain.ids import (
     TeamId,
     UserId,
 )
-from tollgate.domain.pricing import PricedModel
+from tollgate.domain.pricing import ModelPrice, PricedModel, Reconciliation
 from tollgate.domain.records import (
     ClaimOutcome,
     IdempotencyClaim,
     LedgerEntry,
     LedgerKind,
     ReservationLineRecord,
+    ReservationLineView,
     ReservationRecord,
+    StoredReservation,
 )
 from tollgate.domain.reservations import ReservationStatus
 from tollgate.domain.scopes import BudgetNode, ReserveOutcome, ResolvedProject, ScopeKind
@@ -70,6 +72,11 @@ class _FakeStore:
     async def release(self, budget_id: BudgetId, period_start: datetime, amount_micro: int) -> None:
         return None
 
+    async def apply_spend(
+        self, budget_id: BudgetId, period_start: datetime, amount_micro: int
+    ) -> Reconciliation:
+        return Reconciliation(committed_micro=amount_micro, overage_micro=0)
+
 
 class _FakeReservationRepository:
     async def insert(
@@ -81,6 +88,20 @@ class _FakeReservationRepository:
         self, reservation_id: ReservationId, next_status: ReservationStatus
     ) -> bool:
         return True
+
+    async def find(self, reservation_id: ReservationId) -> StoredReservation | None:
+        return None
+
+    async def find_lines(self, reservation_id: ReservationId) -> Sequence[ReservationLineView]:
+        return ()
+
+    async def claim_late_commit(self, reservation_id: ReservationId) -> bool:
+        return False
+
+    async def advance_ttl(
+        self, reservation_id: ReservationId, ttl_deadline: datetime
+    ) -> datetime | None:
+        return None
 
 
 class _FakeIdempotencyRepository:
@@ -109,6 +130,8 @@ async def test_fake_conforms_to_counter_store() -> None:
     assert await store.reserve(BudgetId("b1"), _PERIOD, 10)
     await store.commit(BudgetId("b1"), _PERIOD, 10, 8)
     await store.release(BudgetId("b1"), _PERIOD, 2)
+    applied = await store.apply_spend(BudgetId("b1"), _PERIOD, 5)
+    assert applied == Reconciliation(committed_micro=5, overage_micro=0)
 
 
 async def test_fakes_conform_to_the_repository_ports() -> None:
@@ -139,6 +162,10 @@ async def test_fakes_conform_to_the_repository_ports() -> None:
     )
     await reservations.insert(record, [line])
     assert await reservations.claim_terminal(ReservationId("r1"), ReservationStatus.COMMITTED)
+    assert await reservations.find(ReservationId("r1")) is None
+    assert await reservations.find_lines(ReservationId("r1")) == ()
+    assert await reservations.claim_late_commit(ReservationId("r1")) is False
+    assert await reservations.advance_ttl(ReservationId("r1"), _PERIOD) is None
 
     claim = await idempotency.claim("idem-1", "fp")
     assert claim.outcome is ClaimOutcome.FRESH
@@ -200,6 +227,9 @@ class _FakePriceBook:
     async def resolve_price(self, provider: str, model: str) -> PricedModel | None:
         return None
 
+    async def price_at(self, version: str, provider: str, model: str) -> ModelPrice | None:
+        return None
+
 
 class _FakeBudgets:
     async def find_ancestry_budgets(self, principal: Principal) -> Sequence[BudgetNode]:
@@ -217,6 +247,7 @@ class _FakeCommandContext:
         self.reservations: ReservationRepository = _FakeReservationRepository()
         self.ledger: LedgerRepository = _FakeLedgerRepository()
         self.reserve_tx: ReserveTransaction = _FakeReserveTransaction()
+        self.counter_store: CounterStore = _FakeStore()
 
 
 class _FakeUnitOfWork:
@@ -239,6 +270,7 @@ async def test_fakes_conform_to_price_and_budget_repositories() -> None:
     assert await prices.resolve_price("anthropic", "claude") is None
     assert await budgets.find_ancestry_budgets(_principal()) == ()
     assert await budgets.find_project(ProjectId("p1")) is None
+    assert await prices.price_at("v1", "anthropic", "claude") is None
 
 
 async def test_fake_conforms_to_unit_of_work() -> None:
@@ -251,3 +283,5 @@ async def test_fake_conforms_to_unit_of_work() -> None:
             [BudgetNode(BudgetId("b1"), ScopeKind.ORG, "o1")], _PERIOD, 1
         )
         assert outcome.ok is True
+        applied = await context.counter_store.apply_spend(BudgetId("b1"), _PERIOD, 1)
+        assert applied.committed_micro == 1

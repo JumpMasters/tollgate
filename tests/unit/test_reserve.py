@@ -33,13 +33,15 @@ from tollgate.domain.ids import (
     TeamId,
     UserId,
 )
-from tollgate.domain.pricing import ModelPrice, PricedModel
+from tollgate.domain.pricing import ModelPrice, PricedModel, Reconciliation
 from tollgate.domain.records import (
     ClaimOutcome,
     IdempotencyClaim,
     LedgerEntry,
     ReservationLineRecord,
+    ReservationLineView,
     ReservationRecord,
+    StoredReservation,
 )
 from tollgate.domain.reservations import ReservationStatus
 from tollgate.domain.scopes import BudgetNode, ReserveOutcome, ResolvedProject, ScopeKind
@@ -120,6 +122,20 @@ class _FakeReservations:
     ) -> bool:
         return True
 
+    async def find(self, reservation_id: ReservationId) -> StoredReservation | None:
+        return None
+
+    async def find_lines(self, reservation_id: ReservationId) -> Sequence[ReservationLineView]:
+        return ()
+
+    async def claim_late_commit(self, reservation_id: ReservationId) -> bool:
+        return False
+
+    async def advance_ttl(
+        self, reservation_id: ReservationId, ttl_deadline: datetime
+    ) -> datetime | None:
+        return None
+
 
 class _FakeLedger:
     def __init__(self) -> None:
@@ -127,6 +143,31 @@ class _FakeLedger:
 
     async def append(self, entries: Sequence[LedgerEntry]) -> None:
         self.appended = list(entries)
+
+
+class _StubCounterStore:
+    async def ensure_period(self, budget_id: BudgetId, period_start: datetime) -> None:
+        return None
+
+    async def reserve(self, budget_id: BudgetId, period_start: datetime, amount_micro: int) -> bool:
+        return True
+
+    async def commit(
+        self,
+        budget_id: BudgetId,
+        period_start: datetime,
+        reserved_micro: int,
+        actual_micro: int,
+    ) -> None:
+        return None
+
+    async def release(self, budget_id: BudgetId, period_start: datetime, amount_micro: int) -> None:
+        return None
+
+    async def apply_spend(
+        self, budget_id: BudgetId, period_start: datetime, amount_micro: int
+    ) -> Reconciliation:
+        return Reconciliation(committed_micro=amount_micro, overage_micro=0)
 
 
 class _StubReserveTx:
@@ -147,6 +188,9 @@ class _StubPrices:
 
     async def resolve_price(self, provider: str, model: str) -> PricedModel | None:
         return self._priced
+
+    async def price_at(self, version: str, provider: str, model: str) -> ModelPrice | None:
+        return None
 
 
 class _StubBudgets:
@@ -182,6 +226,7 @@ class _Ctx:
         self.reservations = reservations
         self.ledger = ledger
         self.reserve_tx = reserve_tx
+        self.counter_store = _StubCounterStore()
 
 
 class _Uow:

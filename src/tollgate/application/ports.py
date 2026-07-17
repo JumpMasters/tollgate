@@ -20,12 +20,14 @@ from tollgate.domain.ids import (
     ProjectId,
     ReservationId,
 )
-from tollgate.domain.pricing import PricedModel
+from tollgate.domain.pricing import ModelPrice, PricedModel, Reconciliation
 from tollgate.domain.records import (
     IdempotencyClaim,
     LedgerEntry,
     ReservationLineRecord,
+    ReservationLineView,
     ReservationRecord,
+    StoredReservation,
 )
 from tollgate.domain.reservations import ReservationStatus
 from tollgate.domain.scopes import BudgetNode, ReserveOutcome, ResolvedProject
@@ -64,6 +66,19 @@ class CounterStore(Protocol):
         """Release a held reservation's estimate back to the node."""
         ...
 
+    async def apply_spend(
+        self, budget_id: BudgetId, period_start: datetime, amount_micro: int
+    ) -> Reconciliation:
+        """Apply already-incurred spend against the node's live remaining (§5.4, §5.6).
+
+        For the recovery paths with no held estimate — the self-healing late commit (ADR 0029)
+        and the grace backfill (ADR 0030) — committed takes what fits in ``remaining = limit -
+        reserved - committed - overage`` and the excess is recorded as audited overage. Returns
+        the split so the caller can append faithful ledger rows; must never deny — real spend
+        is always recorded.
+        """
+        ...
+
 
 class ReservationRepository(Protocol):
     """Persistence for reservation rows, their lines, and the identity guard."""
@@ -84,6 +99,38 @@ class ReservationRepository(Protocol):
         Returns whether this caller won the claim, which is what makes a terminal effect
         exactly-once (§5.2). A second claim for the same reservation finds ``status ≠ 'held'``,
         matches zero rows, and returns ``False`` → idempotent replay / self-heal (§5.4).
+        """
+        ...
+
+    async def find(self, reservation_id: ReservationId) -> StoredReservation | None:
+        """Return the reservation row and its live status, or ``None`` if the id is unknown."""
+        ...
+
+    async def find_lines(self, reservation_id: ReservationId) -> Sequence[ReservationLineView]:
+        """Return the reservation's lines joined with their budget nodes.
+
+        The node lets terminal commands walk the balances in the canonical §5.3 lock order;
+        each line's own ``period_start`` is carried because a late commit replays against the
+        line's original period (ADR 0029).
+        """
+        ...
+
+    async def claim_late_commit(self, reservation_id: ReservationId) -> bool:
+        """Atomically move a reaped reservation to committed — the §5.4 self-heal guard.
+
+        Returns whether this caller won; ``False`` means the reservation was not ``reaped``
+        (still held, terminal, or already late-committed). The identity-guard mechanism of
+        :meth:`claim_terminal`, applied to the one legal post-reap transition (ADR 0029).
+        """
+        ...
+
+    async def advance_ttl(
+        self, reservation_id: ReservationId, ttl_deadline: datetime
+    ) -> datetime | None:
+        """Monotonically advance a held reservation's TTL; return the resulting deadline.
+
+        The stored deadline only ever moves forward, so a stale heartbeat can never shorten a
+        newer one (§5.4). Returns ``None`` when the reservation is not held.
         """
         ...
 
@@ -181,6 +228,14 @@ class PriceBookRepository(Protocol):
         """
         ...
 
+    async def price_at(self, version: str, provider: str, model: str) -> ModelPrice | None:
+        """Return the price stamped at exactly ``version``, or ``None`` if that row is absent.
+
+        A commit reconciles against the reservation's stamped version (§4), never the latest —
+        the immutable price book guarantees the row still says what it said at reserve time.
+        """
+        ...
+
 
 class BudgetRepository(Protocol):
     """Reads the budget nodes a reserve gates against (§4, §5.3)."""
@@ -222,6 +277,8 @@ class CommandContext(Protocol):
     def ledger(self) -> LedgerRepository: ...
     @property
     def reserve_tx(self) -> ReserveTransaction: ...
+    @property
+    def counter_store(self) -> CounterStore: ...
 
 
 class UnitOfWork(Protocol):

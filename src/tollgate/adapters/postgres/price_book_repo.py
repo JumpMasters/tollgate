@@ -54,3 +54,33 @@ class PostgresPriceBookRepository:
                 cached_input_micro_per_token=Decimal(row.cached_input_micro_per_token),
             ),
         )
+
+    async def price_at(self, version: str, provider: str, model: str) -> ModelPrice | None:
+        """Return the price stamped at exactly ``version``, or ``None`` if absent (§4).
+
+        A commit reconciles against the reservation's **stamped** version, never the latest;
+        the price book is immutable (ADR 0010/0021), so the row either exists exactly as
+        published or not at all.
+        """
+        row = (
+            await self._conn.execute(
+                select(
+                    price.c.input_micro_per_token,
+                    price.c.output_micro_per_token,
+                    price.c.cached_input_micro_per_token,
+                ).where(
+                    price.c.price_book_version == version,
+                    price.c.provider == provider,
+                    price.c.model == model,
+                )
+            )
+        ).first()
+        if row is None:
+            return None
+        return ModelPrice(
+            provider=provider,
+            model=model,
+            input_micro_per_token=Decimal(row.input_micro_per_token),
+            output_micro_per_token=Decimal(row.output_micro_per_token),
+            cached_input_micro_per_token=Decimal(row.cached_input_micro_per_token),
+        )
