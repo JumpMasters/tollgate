@@ -16,6 +16,7 @@ from contextlib import asynccontextmanager
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from tollgate.adapters.postgres.budget_repo import PostgresBudgetRepository
+from tollgate.adapters.postgres.counter_store import PostgresCounterStore
 from tollgate.adapters.postgres.idempotency_repo import PostgresIdempotencyRepository
 from tollgate.adapters.postgres.ledger_repo import PostgresLedgerRepository
 from tollgate.adapters.postgres.price_book_repo import PostgresPriceBookRepository
@@ -33,6 +34,7 @@ class _PostgresCommandContext:
         self.reservations = PostgresReservationRepository(conn)
         self.ledger = PostgresLedgerRepository(conn)
         self.reserve_tx = PostgresReserveTransaction(conn)
+        self.counter_store = PostgresCounterStore(conn)
 
 
 class PostgresUnitOfWork:
