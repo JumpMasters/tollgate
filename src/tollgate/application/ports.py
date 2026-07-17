@@ -12,6 +12,7 @@ from contextlib import AbstractAsyncContextManager
 from datetime import datetime
 from typing import Any, Protocol
 
+from tollgate.domain.chargeback import BudgetState
 from tollgate.domain.credentials import Credential, Principal
 from tollgate.domain.ids import (
     BudgetId,
@@ -30,7 +31,7 @@ from tollgate.domain.records import (
     StoredReservation,
 )
 from tollgate.domain.reservations import ReservationStatus
-from tollgate.domain.scopes import BudgetNode, ReserveOutcome, ResolvedProject
+from tollgate.domain.scopes import BudgetNode, ReserveOutcome, ResolvedProject, ScopeKind
 
 
 class CounterStore(Protocol):
@@ -291,4 +292,42 @@ class UnitOfWork(Protocol):
 
     def begin(self) -> AbstractAsyncContextManager[CommandContext]:
         """Open the command transaction and yield its bound repositories."""
+        ...
+
+
+class ChargebackRepository(Protocol):
+    """Read-only budget-state queries for the chargeback API (section 2, 5.0). Off the command
+    path.
+    """
+
+    async def subtree_states(
+        self, scope_kind: ScopeKind, scope_id: str, period_start: datetime
+    ) -> Sequence[BudgetState]:
+        """Return the state of every budget node at or below ``(scope_kind, scope_id)`` for the
+        period.
+
+        LEFT-joins the balance for ``period_start``; a node with no activity yet has no balance
+        row and is reported as zero state against the budget's ``hard_limit_micro``. Never seeds
+        a row.
+        """
+        ...
+
+    async def resolve_scope_ancestry(
+        self, scope_kind: ScopeKind, scope_id: str
+    ) -> Mapping[ScopeKind, str] | None:
+        """Return a scope node's server-derived ancestry map, or ``None`` if the node does not
+        exist.
+
+        The map is what :func:`tollgate.domain.credentials.authorizes` consumes to check that a
+        filter node is at or below the credential (section 5.0) -- built from trusted structure
+        rows, never from request-asserted ids.
+        """
+        ...
+
+
+class ChargebackReader(Protocol):
+    """Read seam: a connection-bound :class:`ChargebackRepository` (mirrors ``UnitOfWork``)."""
+
+    def begin(self) -> AbstractAsyncContextManager[ChargebackRepository]:
+        """Open a read-only connection; the async context yields a repository bound to it."""
         ...
