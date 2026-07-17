@@ -94,6 +94,18 @@ class ResolvedProject:
     budget: BudgetNode | None
 
 
+@dataclass(frozen=True, slots=True)
+class ScopeRef:
+    """A reference to a scope node (kind + id) independent of any budget.
+
+    The chargeback read API (section 5.0) uses it to name the optional filter node whose subtree a
+    caller wants, before any budget is resolved. Unlike ``BudgetNode`` it carries no ``budget_id``.
+    """
+
+    scope_kind: ScopeKind
+    scope_id: str
+
+
 def lock_order_key(node: BudgetNode) -> tuple[int, str]:
     """Canonical sort key for deadlock-free lock acquisition (§5.3).
 

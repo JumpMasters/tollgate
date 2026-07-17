@@ -105,6 +105,34 @@ class GraceBackfillResponse(BaseModel):
     price_book_version: str
 
 
+class BudgetAlertState(BaseModel):
+    """One configured soft threshold and whether current utilization has reached it (section 3)."""
+
+    threshold_pct: int
+    crossed: bool
+
+
+class BudgetStateResponse(BaseModel):
+    """One budget node's current-period state in a chargeback read (section 2)."""
+
+    scope_kind: str
+    scope_id: str
+    limit_micro: int
+    reserved_micro: int
+    committed_micro: int
+    overage_micro: int
+    remaining_micro: int
+    utilization_pct: int
+    alerts: list[BudgetAlertState]
+
+
+class BudgetStatesResponse(BaseModel):
+    """Body of ``GET /v1/budgets``: the states at or below the credential's scope (section 2)."""
+
+    period_start: datetime
+    budgets: list[BudgetStateResponse]
+
+
 class ErrorBody(BaseModel):
     """The ``error`` object inside every error envelope (ADR 0031)."""
 

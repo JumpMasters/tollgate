@@ -40,6 +40,7 @@ The format follows Michael Nygard's
 - [0029 — Self-healing late commit applies spend against live remaining](0029-self-healing-late-commit-live-remaining.md)
 - [0030 — Grace backfill resolves budgets, price, and period at backfill time](0030-grace-backfill-resolved-at-backfill-time.md)
 - [0031 — HTTP wire contract for the command routes](0031-http-wire-contract-for-command-routes.md)
+- [0032 — Chargeback read wire contract](0032-chargeback-read-wire-contract.md)
 
 ## Adding a record
 

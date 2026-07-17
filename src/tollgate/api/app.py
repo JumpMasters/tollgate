@@ -12,7 +12,7 @@ from starlette.types import Lifespan
 
 from tollgate import __version__
 from tollgate.api.errors import register_error_handlers
-from tollgate.api.routes import commands
+from tollgate.api.routes import chargeback, commands
 
 
 def create_api(lifespan: Lifespan[FastAPI] | None = None) -> FastAPI:
@@ -25,4 +25,5 @@ def create_api(lifespan: Lifespan[FastAPI] | None = None) -> FastAPI:
 
     register_error_handlers(app)
     app.include_router(commands.router)
+    app.include_router(chargeback.router)
     return app

@@ -14,6 +14,7 @@ from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from tollgate.adapters.clock import SystemClock
+from tollgate.adapters.postgres.chargeback_repo import PostgresChargebackReader
 from tollgate.adapters.postgres.credential_repo import PostgresCredentialRepository
 from tollgate.adapters.postgres.engine import build_engine
 from tollgate.adapters.postgres.identifiers import Uuid7IdGenerator
@@ -24,6 +25,7 @@ from tollgate.application.handlers.cancel import CancelHandler
 from tollgate.application.handlers.commit import CommitHandler
 from tollgate.application.handlers.extend import ExtendHandler
 from tollgate.application.handlers.grace import GraceBackfillHandler
+from tollgate.application.handlers.read import ChargebackHandler
 from tollgate.application.handlers.reserve import ReserveHandler
 from tollgate.config.settings import Settings, load_settings
 
@@ -84,4 +86,7 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         reservation_ttl_seconds=settings.reservation_ttl_seconds,
     )
     app.state.grace_backfill_handler = GraceBackfillHandler(uow=uow, clock=clock, ids=ids)
+    app.state.chargeback_handler = ChargebackHandler(
+        reader=PostgresChargebackReader(engine), clock=clock
+    )
     return app
