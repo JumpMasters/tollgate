@@ -1,0 +1,118 @@
+"""Wire schemas for the command routes (ADR 0031).
+
+Request models mirror the domain command types field-for-field, minus the
+``Idempotency-Key`` (which travels as a header, section 5.1), and reject
+unknown fields so a client typo surfaces as a 422 instead of silently
+weakening enforcement. Response models mirror the domain result types;
+``datetime`` fields serialize as ISO 8601.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class _RequestModel(BaseModel):
+    """Base for request bodies: unknown fields are rejected (ADR 0031)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class UsageBody(_RequestModel):
+    """Provider-reported token usage (section 4: never caller-asserted amounts)."""
+
+    input_tokens: int = Field(ge=0)
+    output_tokens: int = Field(ge=0)
+    cached_input_tokens: int = Field(default=0, ge=0)
+
+
+class ReserveRequest(_RequestModel):
+    """Body of ``POST /v1/reserve``."""
+
+    provider: str = Field(min_length=1)
+    model: str = Field(min_length=1)
+    input_bound_tokens: int = Field(ge=0)
+    max_output_tokens: int = Field(ge=0)
+    labels: dict[str, str] = Field(default_factory=dict)
+    project_id: str | None = None
+
+
+class CommitRequest(_RequestModel):
+    """Body of ``POST /v1/commit``."""
+
+    reservation_id: str = Field(min_length=1)
+    usage: UsageBody
+
+
+class CancelRequest(_RequestModel):
+    """Body of ``POST /v1/cancel``."""
+
+    reservation_id: str = Field(min_length=1)
+
+
+class ExtendRequest(_RequestModel):
+    """Body of ``POST /v1/extend``."""
+
+    reservation_id: str = Field(min_length=1)
+
+
+class GraceBackfillRequest(_RequestModel):
+    """Body of ``POST /v1/grace-backfill``."""
+
+    provider: str = Field(min_length=1)
+    model: str = Field(min_length=1)
+    usage: UsageBody
+    project_id: str | None = None
+
+
+class ReserveResponse(BaseModel):
+    """Success body of ``POST /v1/reserve``."""
+
+    reservation_id: str
+    estimated_micro: int
+    price_book_version: str
+    ttl_deadline: datetime
+
+
+class CommitResponse(BaseModel):
+    """Success body of ``POST /v1/commit``."""
+
+    reservation_id: str
+    committed_micro: int
+    overage_micro: int
+
+
+class CancelResponse(BaseModel):
+    """Success body of ``POST /v1/cancel``."""
+
+    reservation_id: str
+    released_micro: int
+
+
+class ExtendResponse(BaseModel):
+    """Success body of ``POST /v1/extend``."""
+
+    reservation_id: str
+    ttl_deadline: datetime
+
+
+class GraceBackfillResponse(BaseModel):
+    """Success body of ``POST /v1/grace-backfill``."""
+
+    actual_micro: int
+    price_book_version: str
+
+
+class ErrorBody(BaseModel):
+    """The ``error`` object inside every error envelope (ADR 0031)."""
+
+    code: str
+    message: str
+
+
+class ErrorEnvelope(BaseModel):
+    """Every non-2xx body from the command routes: ``{"error": {...}}``."""
+
+    error: ErrorBody
