@@ -14,20 +14,22 @@ re-check happen inside the transaction (§5.0 re-checks authorization inside res
 
 from __future__ import annotations
 
-import hashlib
-import json
 from collections.abc import Mapping
 from datetime import datetime, timedelta
 from typing import Any
 
-from tollgate.application.auth import AuthContext, require_scope
+from tollgate.application.auth import AuthContext
+from tollgate.application.handlers.common import (
+    RESPONSE_SUCCEEDED,
+    command_fingerprint,
+    resolve_applicable_nodes,
+)
 from tollgate.application.ports import Clock, IdGenerator, UnitOfWork
 from tollgate.domain.commands import ReserveCommand, ReserveResult
 from tollgate.domain.credentials import Principal
 from tollgate.domain.errors import (
     IdempotencyKeyReuse,
     InsufficientBudget,
-    ScopeNotAuthorized,
     TollgateError,
     UnknownModel,
 )
@@ -41,28 +43,28 @@ from tollgate.domain.records import (
     ReservationLineRecord,
     ReservationRecord,
 )
-from tollgate.domain.scopes import BudgetNode, ScopeKind, resolve_applicable_set
+from tollgate.domain.scopes import BudgetNode
 
 
 def reserve_fingerprint(principal: Principal, command: ReserveCommand) -> str:
     """Return a stable fingerprint of a reserve command for idempotency-key reuse detection (§5.1).
 
-    Two reserves under the same idempotency key but different salient fields are key reuse and are
-    rejected; the fingerprint folds the derived principal and every cost-determining field so a
-    retry of the *same* logical call matches while a different call does not. Labels are sorted so
-    their order never changes the fingerprint.
+    Two reserves under the same idempotency key but different salient fields are key reuse and
+    are rejected; the fingerprint folds the derived principal and every cost-determining field
+    so a retry of the *same* logical call matches while a different call does not. The
+    canonical JSON sorts keys (labels included), so field order never changes the fingerprint.
     """
-    payload = {
-        "principal_id": principal.user_id,
-        "provider": command.provider,
-        "model": command.model,
-        "input_bound_tokens": command.input_bound_tokens,
-        "max_output_tokens": command.max_output_tokens,
-        "project_id": command.project_id,
-        "labels": dict(sorted(command.labels.items())),
-    }
-    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+    return command_fingerprint(
+        {
+            "principal_id": principal.user_id,
+            "provider": command.provider,
+            "model": command.model,
+            "input_bound_tokens": command.input_bound_tokens,
+            "max_output_tokens": command.max_output_tokens,
+            "project_id": command.project_id,
+            "labels": dict(command.labels),
+        }
+    )
 
 
 def _binding_label(node: BudgetNode | None) -> str:
@@ -131,19 +133,7 @@ class ReserveHandler:
             if priced is None:
                 raise UnknownModel(command.provider, command.model)
 
-            ancestry = await tx.budgets.find_ancestry_budgets(auth.principal)
-            project_node: BudgetNode | None = None
-            if command.project_id is not None:
-                resolved = await tx.budgets.find_project(command.project_id)
-                if resolved is None:
-                    raise ScopeNotAuthorized(f"project:{command.project_id}")
-                require_scope(
-                    auth.credential,
-                    {ScopeKind.ORG: resolved.org_id, ScopeKind.PROJECT: command.project_id},
-                    target=f"project:{command.project_id}",
-                )
-                project_node = resolved.budget
-            nodes = resolve_applicable_set(ancestry, project_node)
+            nodes = await resolve_applicable_nodes(tx.budgets, auth, command.project_id)
 
             estimate = estimate_micro(
                 priced.price,
@@ -204,6 +194,6 @@ class ReserveHandler:
                 ttl_deadline=ttl_deadline,
             )
             await tx.idempotency.store_response(
-                command.idempotency_key, "succeeded", _result_to_response(result)
+                command.idempotency_key, RESPONSE_SUCCEEDED, _result_to_response(result)
             )
             return result
