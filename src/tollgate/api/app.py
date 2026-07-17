@@ -9,6 +9,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 
 from tollgate import __version__
+from tollgate.api.errors import register_error_handlers
 
 
 def create_api() -> FastAPI:
@@ -19,4 +20,5 @@ def create_api() -> FastAPI:
     async def healthz() -> dict[str, str]:
         return {"status": "ok"}
 
+    register_error_handlers(app)
     return app
