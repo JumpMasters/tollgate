@@ -122,6 +122,7 @@ async def test_an_unknown_token_is_rejected_identically(
         headers={"Authorization": "Bearer wrong-token", "Idempotency-Key": "k"},
     )
     assert response.status_code == 401
+    assert response.headers["WWW-Authenticate"] == "Bearer"
     assert response.json()["error"]["code"] == "authentication_failed"
 
 
@@ -147,6 +148,7 @@ async def test_reserve_replays_the_stored_response(
 ) -> None:
     await _seed(committing_engine)
     first = await client.post("/v1/reserve", json=_RESERVE_BODY, headers=_headers("idem-res"))
+    assert first.status_code == 200
     second = await client.post("/v1/reserve", json=_RESERVE_BODY, headers=_headers("idem-res"))
     assert second.status_code == 200
     assert second.json() == first.json()
