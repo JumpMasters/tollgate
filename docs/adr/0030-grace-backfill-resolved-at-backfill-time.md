@@ -34,8 +34,10 @@ against — the mirror of §5.3's default-deny.
 
 - Spend from a window that spanned a period roll or a price-book publication lands
   against the period/version current at backfill, not at dispatch; the drift is
-  bounded by the outage length, and the recorded token counts allow exact
-  re-derivation under any version.
+  bounded by the outage length. The recorded token counts allow cost
+  re-derivation under any version for calls without cached input; the
+  cached-input subset is not a ledger column, so re-pricing a cached call
+  exactly would need it — an additive follow-up, like the grace-cap column.
 - The backfill is exactly-once by idempotency key; the SDK (plan 14) must persist
   the key alongside the tracked usage so a crash cannot double-backfill.
 - A denial (unknown model, unauthorized project, empty set) rolls back and must be

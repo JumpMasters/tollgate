@@ -169,8 +169,13 @@ async def _emulate_reap(engine: AsyncEngine, reservation_id: str, estimate: int)
             {"r": reservation_id},
         )
         await conn.execute(
-            text("UPDATE budget_balance SET reserved_micro = reserved_micro - :est"),
-            {"est": estimate},
+            text(
+                "UPDATE budget_balance SET reserved_micro = reserved_micro - :est"
+                " WHERE (budget_id, period_start) IN ("
+                "SELECT budget_id, period_start FROM reservation_line"
+                " WHERE reservation_id = :r)"
+            ),
+            {"est": estimate, "r": reservation_id},
         )
 
 

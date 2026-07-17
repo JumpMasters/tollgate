@@ -107,10 +107,10 @@ class _NoIdempotency:
 
 class _StubCounterStore:
     async def ensure_period(self, budget_id: BudgetId, period_start: datetime) -> None:
-        return None
+        raise AssertionError("extend never touches balances")
 
     async def reserve(self, budget_id: BudgetId, period_start: datetime, amount_micro: int) -> bool:
-        return True
+        raise AssertionError("extend never touches balances")
 
     async def commit(
         self,
@@ -119,15 +119,15 @@ class _StubCounterStore:
         reserved_micro: int,
         actual_micro: int,
     ) -> None:
-        return None
+        raise AssertionError("extend never touches balances")
 
     async def release(self, budget_id: BudgetId, period_start: datetime, amount_micro: int) -> None:
-        return None
+        raise AssertionError("extend never touches balances")
 
     async def apply_spend(
         self, budget_id: BudgetId, period_start: datetime, amount_micro: int
     ) -> Reconciliation:
-        return Reconciliation(committed_micro=amount_micro, overage_micro=0)
+        raise AssertionError("extend never touches balances")
 
 
 class _StubLedger:

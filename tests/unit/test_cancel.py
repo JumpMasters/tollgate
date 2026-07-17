@@ -334,3 +334,5 @@ def test_cancel_fingerprint_is_stable_and_reservation_sensitive() -> None:
     assert cancel_fingerprint(principal, _command()) != cancel_fingerprint(
         principal, _command("res-2")
     )
+    other = Principal(user_id=UserId("u2"), team_id=TeamId("t1"), org_id=OrgId("o1"))
+    assert cancel_fingerprint(principal, _command()) != cancel_fingerprint(other, _command())

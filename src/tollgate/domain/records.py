@@ -78,8 +78,11 @@ class LedgerEntry:
     The three deltas default to zero. The token counts are recorded on commit/overage
     entries and left ``None`` elsewhere; ``provider`` and ``price_book_version`` are also
     stamped on reserve entries, pinning the cost basis the estimate was priced against.
-    ``reservation_id`` is nullable so a ``grace_backfill`` entry (which has no live
-    reservation) can still be recorded.
+    A single call's ``commit_adjust`` and ``overage`` rows describe the same call and so
+    carry the SAME token counts — summing token columns across a reservation's rows
+    double-counts; only the monetary deltas are additive across rows. ``reservation_id``
+    is nullable so a ``grace_backfill`` entry (which has no live reservation) can still be
+    recorded.
     """
 
     entry_id: LedgerEntryId
