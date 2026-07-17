@@ -29,6 +29,13 @@ class Settings(BaseSettings):
         ge=1,
         description="Default reservation TTL before the reaper may release it.",
     )
+    token_hash_secret: str = Field(
+        default="",
+        description=(
+            "Keyed-hash secret (server pepper) for bearer-token hashing (ADR 0026). "
+            "Must be set for the app to start; there is no usable default."
+        ),
+    )
 
 
 def load_settings() -> Settings:
