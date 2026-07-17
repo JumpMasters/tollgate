@@ -10,6 +10,7 @@ from fastapi import FastAPI
 
 from tollgate import __version__
 from tollgate.api.errors import register_error_handlers
+from tollgate.api.routes import commands
 
 
 def create_api() -> FastAPI:
@@ -21,4 +22,5 @@ def create_api() -> FastAPI:
         return {"status": "ok"}
 
     register_error_handlers(app)
+    app.include_router(commands.router)
     return app
