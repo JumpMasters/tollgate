@@ -62,7 +62,12 @@ class IdempotencyKeyReuse(TollgateError):
 
 
 class ReservationNotHeld(TollgateError):
-    """A terminal command targeted a reservation that is no longer held."""
+    """A command targeted a reservation that is no longer held.
+
+    Raised by commit/cancel when the terminal effect already happened (under a different
+    idempotency key), and by extend when there is nothing left to keep alive. A commit that
+    finds the reservation *reaped* does not raise this — it self-heals (§5.4).
+    """
 
 
 class AuthenticationFailed(TollgateError):

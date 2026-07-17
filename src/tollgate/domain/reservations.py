@@ -1,10 +1,11 @@
 """The reservation state machine.
 
-A reservation is *held* when created, then reaches exactly one terminal state:
-*committed* (the call completed and usage was reconciled), *released* (the call
-was cancelled before incurring usage), or *reaped* (its TTL elapsed with no
-heartbeat). The transitions here are pure; persistence and the identity guard
-that makes a terminal effect exactly-once live in the adapters.
+A reservation is *held* when created. *Committed* and *released* are terminal; *reaped* (its
+TTL elapsed with no heartbeat) is settled but not dead: the one transition out of it is the
+§5.4 self-healing late commit — ``reaped → committed`` — which records real spend for a call
+that was still alive when its reservation was reaped (ADR 0029). The transitions here are
+pure; persistence and the identity guards that make each transition exactly-once live in the
+adapters.
 """
 
 from __future__ import annotations
@@ -21,7 +22,7 @@ class ReservationStatus(StrEnum):
     REAPED = "reaped"
 
 
-#: The only legal transitions: a held reservation may reach any terminal state.
+#: The legal transitions: held settles any way; reaped admits only the late commit (§5.4).
 _ALLOWED: dict[ReservationStatus, frozenset[ReservationStatus]] = {
     ReservationStatus.HELD: frozenset(
         {
@@ -32,7 +33,7 @@ _ALLOWED: dict[ReservationStatus, frozenset[ReservationStatus]] = {
     ),
     ReservationStatus.COMMITTED: frozenset(),
     ReservationStatus.RELEASED: frozenset(),
-    ReservationStatus.REAPED: frozenset(),
+    ReservationStatus.REAPED: frozenset({ReservationStatus.COMMITTED}),
 }
 
 

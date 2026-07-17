@@ -37,6 +37,7 @@ The format follows Michael Nygard's
 - [0026 — Keyed deterministic token hash for credential lookup](0026-keyed-deterministic-token-hash.md)
 - [0027 — Reserve period_start is the current UTC calendar month](0027-reserve-period-start-calendar-month.md)
 - [0028 — Current price-book version is the latest published](0028-current-price-book-version-latest-published.md)
+- [0029 — Self-healing late commit applies spend against live remaining](0029-self-healing-late-commit-live-remaining.md)
 
 ## Adding a record
 

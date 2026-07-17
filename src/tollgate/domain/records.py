@@ -16,6 +16,8 @@ from enum import StrEnum
 from typing import Any
 
 from tollgate.domain.ids import BudgetId, LedgerEntryId, PrincipalId, ReservationId
+from tollgate.domain.reservations import ReservationStatus
+from tollgate.domain.scopes import BudgetNode
 
 
 class LedgerKind(StrEnum):
@@ -93,6 +95,34 @@ class LedgerEntry:
     provider: str | None = None
     price_book_version: str | None = None
     ref: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class StoredReservation:
+    """A persisted reservation read back for a lifecycle command (§5.2, §5.4).
+
+    ``record`` is the immutable insert-time row; ``status`` is the live lifecycle state the
+    identity guards branch on — held routes to the normal terminal path, reaped to the
+    self-healing late commit (ADR 0029), anything else to :class:`ReservationNotHeld`.
+    """
+
+    record: ReservationRecord
+    status: ReservationStatus
+
+
+@dataclass(frozen=True, slots=True)
+class ReservationLineView:
+    """A reservation line joined with the budget node it drew on (§5.3, §5.4).
+
+    Terminal commands update the same ``budget_balance`` rows concurrent reserves contend on;
+    carrying the full :class:`BudgetNode` (not just the ``budget_id``) lets them walk the lines
+    in the canonical ``lock_order_key`` order the reserve used, so the two can never form a
+    lock cycle on shared parent rows.
+    """
+
+    node: BudgetNode
+    period_start: datetime
+    amount_micro: int
 
 
 @dataclass(frozen=True, slots=True)
