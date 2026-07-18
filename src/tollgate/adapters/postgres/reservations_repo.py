@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -37,6 +38,23 @@ class PostgresReservationRepository:
 
     def __init__(self, conn: AsyncConnection) -> None:
         self._conn = conn
+
+    @staticmethod
+    def _record_from_row(row: Any) -> ReservationRecord:
+        """Build the immutable reservation record from a full reservation row."""
+        return ReservationRecord(
+            reservation_id=ReservationId(row.reservation_id),
+            idempotency_key=row.idempotency_key,
+            principal_id=PrincipalId(row.principal_id),
+            provider=row.provider,
+            model=row.model,
+            price_book_version=row.price_book_version,
+            estimated_micro=row.estimated_micro,
+            input_bound_tokens=row.input_bound_tokens,
+            max_output_tokens=row.max_output_tokens,
+            ttl_deadline=row.ttl_deadline,
+            labels=row.labels,
+        )
 
     async def insert(
         self,
@@ -101,19 +119,7 @@ class PostgresReservationRepository:
         ).first()
         if row is None:
             return None
-        record = ReservationRecord(
-            reservation_id=ReservationId(row.reservation_id),
-            idempotency_key=row.idempotency_key,
-            principal_id=PrincipalId(row.principal_id),
-            provider=row.provider,
-            model=row.model,
-            price_book_version=row.price_book_version,
-            estimated_micro=row.estimated_micro,
-            input_bound_tokens=row.input_bound_tokens,
-            max_output_tokens=row.max_output_tokens,
-            ttl_deadline=row.ttl_deadline,
-            labels=row.labels,
-        )
+        record = self._record_from_row(row)
         return StoredReservation(record=record, status=ReservationStatus(row.status))
 
     async def find_lines(self, reservation_id: ReservationId) -> Sequence[ReservationLineView]:
@@ -188,3 +194,36 @@ class PostgresReservationRepository:
         )
         row = (await self._conn.execute(stmt)).first()
         return None if row is None else row.ttl_deadline
+
+    async def claim_next_expired(self, now: datetime) -> StoredReservation | None:
+        """Claim and reap the oldest expired held reservation, or ``None`` if none remain (§5.4).
+
+        The canonical Postgres queue claim: a ``FOR UPDATE SKIP LOCKED`` sub-select picks one
+        held reservation past its ``ttl_deadline`` (skipping rows another reaper or a racing
+        commit already locks), and the enclosing ``UPDATE`` flips it to ``reaped`` and returns the
+        row. Because ``extend`` advances ``ttl_deadline`` monotonically, ``ttl_deadline < now``
+        already means "not heartbeated recently" — no separate heartbeat column is needed. The
+        caller releases this reservation's held estimate on its lines in the same transaction, so
+        the status flip and the balance release commit atomically (exactly-once, §5.2).
+        """
+        picked = (
+            select(reservation_table.c.reservation_id)
+            .where(
+                reservation_table.c.status == ReservationStatus.HELD,
+                reservation_table.c.ttl_deadline < now,
+            )
+            .order_by(reservation_table.c.ttl_deadline)
+            .limit(1)
+            .with_for_update(skip_locked=True)
+            .scalar_subquery()
+        )
+        stmt = (
+            update(reservation_table)
+            .where(reservation_table.c.reservation_id == picked)
+            .values(status=ReservationStatus.REAPED)
+            .returning(reservation_table)
+        )
+        row = (await self._conn.execute(stmt)).first()
+        if row is None:
+            return None
+        return StoredReservation(record=self._record_from_row(row), status=ReservationStatus.REAPED)

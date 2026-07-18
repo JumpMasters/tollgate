@@ -11,9 +11,10 @@ Cross-transaction serialization of concurrent duplicates is exercised in plan 07
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -59,3 +60,26 @@ class PostgresIdempotencyRepository:
             .values(status=status, response=dict(response))
         )
         await self._conn.execute(stmt)
+
+    async def delete_expired(self, cutoff: datetime, limit: int) -> int:
+        """Delete up to ``limit`` keys created before ``cutoff``; return the count removed (§5.5).
+
+        Bounded so the reaper never issues one unbounded delete — the caller loops until a batch
+        comes back short. Keys are addressed via a primary-key sub-select so the ``LIMIT`` applies
+        to the delete set (Postgres has no ``DELETE … LIMIT``). Safe because
+        ``reservation.idempotency_key`` is UNIQUE, not a foreign key: an aged key never orphans a
+        reservation. The sub-select orders by key and takes its locks with ``FOR UPDATE SKIP
+        LOCKED``, so concurrent reapers pick disjoint, deterministically-ordered batches and make
+        progress without deadlocking — mirroring ``claim_next_expired``.
+        """
+        picked = (
+            select(idempotency_key.c.key)
+            .where(idempotency_key.c.created_at < cutoff)
+            .order_by(idempotency_key.c.key)
+            .limit(limit)
+            .with_for_update(skip_locked=True)
+        )
+        result = await self._conn.execute(
+            delete(idempotency_key).where(idempotency_key.c.key.in_(picked))
+        )
+        return result.rowcount

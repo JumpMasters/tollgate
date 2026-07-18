@@ -26,6 +26,10 @@ dependencies = [
 [project.urls]
 Repository = "https://github.com/JumpMasters/tollgate"
 
+[project.scripts]
+tollgate-reservation-reaper = "tollgate.app:run_reservation_reaper"
+tollgate-idempotency-reaper = "tollgate.app:run_idempotency_reaper"
+
 [dependency-groups]
 dev = [
     "pytest>=8.3",

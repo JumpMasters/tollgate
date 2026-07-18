@@ -103,6 +103,9 @@ class _FakeReservationRepository:
     ) -> datetime | None:
         return None
 
+    async def claim_next_expired(self, now: datetime) -> StoredReservation | None:
+        return None
+
 
 class _FakeIdempotencyRepository:
     async def claim(self, key: str, fingerprint: str) -> IdempotencyClaim:
@@ -110,6 +113,9 @@ class _FakeIdempotencyRepository:
 
     async def store_response(self, key: str, status: str, response: Mapping[str, Any]) -> None:
         return None
+
+    async def delete_expired(self, cutoff: datetime, limit: int) -> int:
+        return 0
 
 
 class _FakeLedgerRepository:
@@ -166,10 +172,12 @@ async def test_fakes_conform_to_the_repository_ports() -> None:
     assert await reservations.find_lines(ReservationId("r1")) == ()
     assert await reservations.claim_late_commit(ReservationId("r1")) is False
     assert await reservations.advance_ttl(ReservationId("r1"), _PERIOD) is None
+    assert await reservations.claim_next_expired(_PERIOD) is None
 
     claim = await idempotency.claim("idem-1", "fp")
     assert claim.outcome is ClaimOutcome.FRESH
     await idempotency.store_response("idem-1", "succeeded", {"reservation_id": "r1"})
+    assert await idempotency.delete_expired(_PERIOD, 10) == 0
 
     await ledger.append(
         [

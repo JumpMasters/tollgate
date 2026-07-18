@@ -36,6 +36,31 @@ class Settings(BaseSettings):
             "Must be set for the app to start; there is no usable default."
         ),
     )
+    reaper_poll_interval_seconds: float = Field(
+        default=30.0,
+        gt=0,
+        description="Seconds the reservation reaper waits between ticks (§5.5).",
+    )
+    reaper_batch_size: int = Field(
+        default=100,
+        ge=1,
+        description="Max reservations the reservation reaper reaps per tick (bounded work).",
+    )
+    idempotency_ttl_hours: int = Field(
+        default=24,
+        ge=1,
+        description="Age at which idempotency keys become reapable (§5.5).",
+    )
+    idempotency_reaper_poll_interval_seconds: float = Field(
+        default=3600.0,
+        gt=0,
+        description="Seconds the idempotency reaper waits between ticks (§5.5).",
+    )
+    idempotency_reaper_batch_size: int = Field(
+        default=500,
+        ge=1,
+        description="Rows deleted per idempotency-reaper batch (bounded per-tx work).",
+    )
 
 
 def load_settings() -> Settings:

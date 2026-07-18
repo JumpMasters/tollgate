@@ -7,8 +7,12 @@ Everything else depends on ports. The import-linter contracts in
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import signal
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from typing import Protocol
 
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -26,8 +30,10 @@ from tollgate.application.handlers.commit import CommitHandler
 from tollgate.application.handlers.extend import ExtendHandler
 from tollgate.application.handlers.grace import GraceBackfillHandler
 from tollgate.application.handlers.read import ChargebackHandler
+from tollgate.application.handlers.reap import IdempotencyReaperHandler, ReservationReaperHandler
 from tollgate.application.handlers.reserve import ReserveHandler
 from tollgate.config.settings import Settings, load_settings
+from tollgate.workers.runner import SupportsRunOnce, run_forever
 
 
 def _authenticator(
@@ -92,3 +98,87 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         reader=PostgresChargebackReader(engine), clock=clock
     )
     return app
+
+
+def _worker_engine(settings: Settings) -> AsyncEngine:
+    """Build the datastore engine a reaper worker process runs on."""
+    return build_engine(
+        settings.database_url.get_secret_value(),
+        statement_timeout_ms=settings.reserve_statement_timeout_ms,
+    )
+
+
+def _reservation_reaper(engine: AsyncEngine, settings: Settings) -> ReservationReaperHandler:
+    """Wire the reservation reaper against the datastore (composition)."""
+    return ReservationReaperHandler(
+        uow=PostgresUnitOfWork(engine),
+        clock=SystemClock(),
+        ids=Uuid7IdGenerator(),
+        batch_size=settings.reaper_batch_size,
+    )
+
+
+def _idempotency_reaper(engine: AsyncEngine, settings: Settings) -> IdempotencyReaperHandler:
+    """Wire the idempotency-key reaper against the datastore (composition)."""
+    return IdempotencyReaperHandler(
+        uow=PostgresUnitOfWork(engine),
+        clock=SystemClock(),
+        ttl_hours=settings.idempotency_ttl_hours,
+        batch_size=settings.idempotency_reaper_batch_size,
+    )
+
+
+class SupportsDispose(Protocol):
+    """A resource the worker loop releases on shutdown (an engine's ``dispose``)."""
+
+    async def dispose(self) -> None: ...
+
+
+async def _serve(
+    tick: SupportsRunOnce,
+    *,
+    interval_seconds: float,
+    engine: SupportsDispose,
+    name: str,
+    stop: asyncio.Event | None = None,
+    install_signals: bool = True,
+) -> None:
+    """Run a worker tick loop until SIGINT/SIGTERM, then dispose the engine (graceful shutdown)."""
+    stop = stop or asyncio.Event()
+    if install_signals:
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            with contextlib.suppress(NotImplementedError):
+                loop.add_signal_handler(sig, stop.set)
+    try:
+        await run_forever(tick, interval_seconds=interval_seconds, stop=stop, name=name)
+    finally:
+        await engine.dispose()
+
+
+def run_reservation_reaper() -> None:  # pragma: no cover - process entrypoint
+    """Console-script entrypoint: poll the reservation reaper until signalled."""
+    settings = load_settings()
+    engine = _worker_engine(settings)
+    asyncio.run(
+        _serve(
+            _reservation_reaper(engine, settings),
+            interval_seconds=settings.reaper_poll_interval_seconds,
+            engine=engine,
+            name="reservation-reaper",
+        )
+    )
+
+
+def run_idempotency_reaper() -> None:  # pragma: no cover - process entrypoint
+    """Console-script entrypoint: poll the idempotency-key reaper until signalled."""
+    settings = load_settings()
+    engine = _worker_engine(settings)
+    asyncio.run(
+        _serve(
+            _idempotency_reaper(engine, settings),
+            interval_seconds=settings.idempotency_reaper_poll_interval_seconds,
+            engine=engine,
+            name="idempotency-reaper",
+        )
+    )
