@@ -129,3 +129,37 @@ async def test_sibling_reserves_serialize_on_shared_parents_without_deadlock(
     # and every denial reserved none — so all three counts agree.
     assert org_reserved == 1000
     assert u1_reserved + u2_reserved == 1000
+
+
+async def test_concurrent_first_reservers_converge_on_one_period_balance_row(
+    committing_engine: AsyncEngine,
+) -> None:
+    """``ensure_period``'s ``ON CONFLICT DO NOTHING`` under a real cross-transaction race (§5.3).
+
+    Seed only the ``budget`` row for a fresh period -- no ``budget_balance`` row exists yet --
+    then fire N concurrent reserves that all race to INSERT it. Exactly one balance row must
+    survive the race (the conflicting INSERTs no-op rather than error), and every admitted
+    reserve's amount must land on that single surviving row.
+    """
+    async with committing_engine.begin() as conn:
+        await conn.execute(
+            text(
+                "INSERT INTO budget"
+                " (budget_id, scope_kind, scope_id, period_kind, hard_limit_micro)"
+                " VALUES (:b, :k, :s, 'calendar_month', :lim)"
+            ),
+            {"b": "b-fresh", "k": "org", "s": "o-fresh", "lim": 100_000},
+        )
+    node = [BudgetNode(BudgetId("b-fresh"), ScopeKind.ORG, "o-fresh")]
+    estimate = 100
+    results = await asyncio.gather(
+        *(_attempt_reserve(committing_engine, node, estimate) for _ in range(8))
+    )
+    admitted_count = sum(1 for ok in results if ok)
+    assert admitted_count == 8  # headroom (100,000) comfortably covers all 8 racers
+    async with committing_engine.connect() as conn:
+        balance_rows = (
+            await conn.execute(text("SELECT count(*) FROM budget_balance"))
+        ).scalar_one()
+    assert balance_rows == 1
+    assert await _reserved(committing_engine, "b-fresh") == admitted_count * estimate

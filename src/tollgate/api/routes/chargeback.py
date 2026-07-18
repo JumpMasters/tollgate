@@ -12,6 +12,7 @@ installed by ``tollgate.api.errors``; a malformed ``scope`` is a 422.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 
@@ -20,6 +21,7 @@ from tollgate.api.schemas import (
     BudgetAlertState,
     BudgetStateResponse,
     BudgetStatesResponse,
+    ErrorEnvelope,
     SpendGroupResponse,
     SpendRollupResponse,
 )
@@ -38,6 +40,15 @@ from tollgate.domain.scopes import ScopeKind, ScopeRef
 router = APIRouter(prefix="/v1")
 
 _SCOPE_KINDS = {kind.value for kind in ScopeKind}
+
+#: Domain error statuses the chargeback reads can return, documented with the error envelope
+#: (ADR 0031). The malformed-scope/group-by 422 is left to FastAPI's own default documentation.
+_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
+    401: {"model": ErrorEnvelope, "description": "missing or invalid bearer credential"},
+    403: {"model": ErrorEnvelope, "description": "credential not authorized, or no budget"},
+    500: {"model": ErrorEnvelope, "description": "internal error"},
+    503: {"model": ErrorEnvelope, "description": "enforcement datastore unavailable"},
+}
 
 
 def _parse_scope(scope: str | None) -> ScopeRef | None:
@@ -66,12 +77,12 @@ def _node_response(state: BudgetState) -> BudgetStateResponse:
         utilization_pct=utilization_pct(state),
         alerts=[
             BudgetAlertState(threshold_pct=threshold, crossed=threshold in crossed)
-            for threshold in sorted(state.alert_thresholds_pct)
+            for threshold in state.alert_thresholds_pct
         ],
     )
 
 
-@router.get("/budgets")
+@router.get("/budgets", responses=_ERROR_RESPONSES)
 async def budgets(
     request: Request, auth: RequestAuth, scope: str | None = None
 ) -> BudgetStatesResponse:
@@ -97,7 +108,7 @@ def _spend_response(rollup: SpendRollup, group_by: str) -> SpendRollupResponse:
     )
 
 
-@router.get("/spend")
+@router.get("/spend", responses=_ERROR_RESPONSES)
 async def spend(
     request: Request,
     auth: RequestAuth,

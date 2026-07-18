@@ -9,7 +9,7 @@ installed by ``tollgate.api.errors`` (ADR 0031).
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Header, Request
 
@@ -19,6 +19,7 @@ from tollgate.api.schemas import (
     CancelResponse,
     CommitRequest,
     CommitResponse,
+    ErrorEnvelope,
     ExtendRequest,
     ExtendResponse,
     GraceBackfillRequest,
@@ -46,6 +47,18 @@ router = APIRouter(prefix="/v1")
 
 IdempotencyKey = Annotated[str, Header(alias="Idempotency-Key", min_length=1)]
 
+#: Domain error statuses the command routes can return, documented with the error envelope
+#: (ADR 0031). The request-validation 422 (and the domain UnknownModel 422 that shares it) is
+#: left to FastAPI's own default documentation (ADR 0031, 0033).
+_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
+    401: {"model": ErrorEnvelope, "description": "missing or invalid bearer credential"},
+    402: {"model": ErrorEnvelope, "description": "insufficient budget"},
+    403: {"model": ErrorEnvelope, "description": "credential not authorized, or no budget"},
+    409: {"model": ErrorEnvelope, "description": "idempotency key reuse, or reservation conflict"},
+    500: {"model": ErrorEnvelope, "description": "internal error"},
+    503: {"model": ErrorEnvelope, "description": "enforcement datastore unavailable"},
+}
+
 
 def _usage(body: UsageBody) -> ProviderUsage:
     return ProviderUsage(
@@ -55,7 +68,7 @@ def _usage(body: UsageBody) -> ProviderUsage:
     )
 
 
-@router.post("/reserve")
+@router.post("/reserve", responses=_ERROR_RESPONSES)
 async def reserve(
     request: Request,
     body: ReserveRequest,
@@ -82,7 +95,7 @@ async def reserve(
     )
 
 
-@router.post("/commit")
+@router.post("/commit", responses=_ERROR_RESPONSES)
 async def commit(
     request: Request,
     body: CommitRequest,
@@ -104,7 +117,7 @@ async def commit(
     )
 
 
-@router.post("/cancel")
+@router.post("/cancel", responses=_ERROR_RESPONSES)
 async def cancel(
     request: Request,
     body: CancelRequest,
@@ -124,7 +137,7 @@ async def cancel(
     )
 
 
-@router.post("/extend")
+@router.post("/extend", responses=_ERROR_RESPONSES)
 async def extend(request: Request, body: ExtendRequest, auth: RequestAuth) -> ExtendResponse:
     """Heartbeat a held reservation; no Idempotency-Key - extend is monotonic (section 4)."""
     handler: ExtendHandler = request.app.state.extend_handler
@@ -133,7 +146,7 @@ async def extend(request: Request, body: ExtendRequest, auth: RequestAuth) -> Ex
     return ExtendResponse(reservation_id=result.reservation_id, ttl_deadline=result.ttl_deadline)
 
 
-@router.post("/grace-backfill")
+@router.post("/grace-backfill", responses=_ERROR_RESPONSES)
 async def grace_backfill(
     request: Request,
     body: GraceBackfillRequest,
