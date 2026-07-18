@@ -66,7 +66,7 @@ def _node_response(state: BudgetState) -> BudgetStateResponse:
         utilization_pct=utilization_pct(state),
         alerts=[
             BudgetAlertState(threshold_pct=threshold, crossed=threshold in crossed)
-            for threshold in sorted(state.alert_thresholds_pct)
+            for threshold in state.alert_thresholds_pct
         ],
     )
 

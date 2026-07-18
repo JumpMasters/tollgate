@@ -64,6 +64,14 @@ def test_non_positive_limit_is_zero_utilization_and_no_alerts() -> None:
     assert crossed_thresholds(state) == ()
 
 
+def test_strictly_negative_limit_is_zero_utilization_and_no_alerts() -> None:
+    # budget_balance.limit_micro has no non-negativity CHECK, so a negative limit is reachable;
+    # the "<= 0" guard covers it the same as the zero case.
+    state = _state(limit=-100, thresholds=(50, 100))
+    assert utilization_pct(state) == 0
+    assert crossed_thresholds(state) == ()
+
+
 def test_threshold_crosses_exactly_at_the_boundary() -> None:
     # spent 800 / limit 1000 == 80%: 50 and 80 are crossed (>= is inclusive), 95 is not.
     state = _state(limit=1000, reserved=500, committed=300, thresholds=(95, 50, 80))
