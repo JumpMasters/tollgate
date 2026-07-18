@@ -42,6 +42,19 @@ class ModelPrice:
 
 
 @dataclass(frozen=True, slots=True)
+class PricedModel:
+    """A resolved price plus the price-book version it came from (§3, ADR 0028).
+
+    The reserve resolves the *current* price for a ``(provider, model)`` and stamps ``version`` on
+    the reservation; the matching commit reconciles against the **same** version, so a historical
+    cost can be re-derived exactly from the immutable price book.
+    """
+
+    version: str
+    price: ModelPrice
+
+
+@dataclass(frozen=True, slots=True)
 class Reconciliation:
     """The split of an actual cost against its reservation (§4).
 

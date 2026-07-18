@@ -1,4 +1,4 @@
-"""Command and result value types for the four reservation commands (§4, §5).
+"""Command and result value types for the reservation commands and the grace backfill (§4, §5).
 
 These are the pure, immutable request/outcome shapes shared by the application
 handlers (which orchestrate the transaction), the HTTP surface (which (de)serializes
@@ -101,10 +101,12 @@ class ReserveResult:
 class CommitResult:
     """The reconciliation of a commit (§4).
 
-    ``committed_micro`` is the part of the reservation that converted to real spend
-    (at most the reserved estimate); ``overage_micro`` is audited drift above it. The
-    actual cost is their sum. Every applicable node receives the same split, so one
-    pair describes the whole commit.
+    ``committed_micro + overage_micro`` is the actual cost. On the normal path every node
+    receives the same split — at most the reserved estimate converts to committed spend and
+    drift above it is audited overage — so the pair is each node's split. On the self-healing
+    late commit of a reaped reservation (§5.4, ADR 0029) the split varies with each node's live
+    remaining and the pair reports the most-restrictive node's split (the greatest overage);
+    per-node detail is on the ledger.
     """
 
     reservation_id: ReservationId
@@ -126,3 +128,32 @@ class ExtendResult:
 
     reservation_id: ReservationId
     ttl_deadline: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class GraceBackfillCommand:
+    """Reconcile spend incurred during an enforcement outage under opt-in grace (§5.6).
+
+    The SDK dispatched the call without a reservation while the datastore was unreachable and
+    tracked the provider-reported usage locally; once connectivity returns it backfills that
+    spend so it is never lost. There is no reservation to reconcile against — the applicable
+    budget set, the price, and the period are resolved server-side at backfill time (ADR 0030).
+    """
+
+    idempotency_key: str
+    provider: str
+    model: str
+    usage: ProviderUsage
+    project_id: ProjectId | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class GraceBackfillResult:
+    """The outcome of a grace backfill: the recorded cost and its price basis (§5.6).
+
+    Per-node committed/overage splits vary with each node's live remaining and are recorded on
+    the ``grace_backfill`` ledger rows, not summarized here.
+    """
+
+    actual_micro: int
+    price_book_version: str

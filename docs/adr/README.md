@@ -35,6 +35,13 @@ The format follows Michael Nygard's
 - [0024 — Baseline migration builds the schema from the canonical MetaData](0024-metadata-create-all-baseline-migration.md)
 - [0025 — At most one budget per scope node in V1](0025-one-budget-per-scope-node.md)
 - [0026 — Keyed deterministic token hash for credential lookup](0026-keyed-deterministic-token-hash.md)
+- [0027 — Reserve period_start is the current UTC calendar month](0027-reserve-period-start-calendar-month.md)
+- [0028 — Current price-book version is the latest published](0028-current-price-book-version-latest-published.md)
+- [0029 — Self-healing late commit applies spend against live remaining](0029-self-healing-late-commit-live-remaining.md)
+- [0030 — Grace backfill resolves budgets, price, and period at backfill time](0030-grace-backfill-resolved-at-backfill-time.md)
+- [0031 — HTTP wire contract for the command routes](0031-http-wire-contract-for-command-routes.md)
+- [0032 — Chargeback read wire contract](0032-chargeback-read-wire-contract.md)
+- [0033 — Chargeback spend rollups over the ledger](0033-chargeback-spend-rollups.md)
 
 ## Adding a record
 

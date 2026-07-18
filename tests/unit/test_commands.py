@@ -13,6 +13,8 @@ from tollgate.domain.commands import (
     CommitResult,
     ExtendCommand,
     ExtendResult,
+    GraceBackfillCommand,
+    GraceBackfillResult,
     ProviderUsage,
     ReserveCommand,
     ReserveResult,
@@ -146,3 +148,26 @@ def test_result_types_are_immutable() -> None:
     result = CancelResult(reservation_id=ReservationId("rsv-1"), released_micro=1)
     with pytest.raises(AttributeError):
         result.released_micro = 2  # type: ignore[misc]
+
+
+def test_grace_backfill_command_carries_usage_and_optional_project() -> None:
+    usage = ProviderUsage(input_tokens=100, output_tokens=50)
+    cmd = GraceBackfillCommand(
+        idempotency_key="idem-4",
+        provider="anthropic",
+        model="claude-opus-4-8",
+        usage=usage,
+        project_id=ProjectId("proj-7"),
+    )
+    assert cmd.usage.output_tokens == 50
+    assert cmd.project_id == ProjectId("proj-7")
+    unprojected = GraceBackfillCommand(
+        idempotency_key="idem-4", provider="anthropic", model="claude-opus-4-8", usage=usage
+    )
+    assert unprojected.project_id is None
+
+
+def test_grace_backfill_result_reports_cost_and_price_basis() -> None:
+    result = GraceBackfillResult(actual_micro=4_200, price_book_version="2026-06-22")
+    assert result.actual_micro == 4_200
+    assert result.price_book_version == "2026-06-22"
