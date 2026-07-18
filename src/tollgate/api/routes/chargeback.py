@@ -1,9 +1,12 @@
-"""The chargeback read route: GET /v1/budgets (section 2, 5.0, ADR 0032).
+"""The chargeback read routes: GET /v1/budgets and GET /v1/spend (section 2, 5.0, ADR 0032, 0033).
 
-Authorizes to budgets at or below the bearer credential's scope; an optional ``?scope=<kind>:<id>``
-re-roots the returned subtree at a named node, refused identically to an unknown one (no existence
-leak). Off the command path: a GET, no Idempotency-Key, a read-only connection. Domain errors
-propagate to the handler installed by ``tollgate.api.errors``; a malformed ``scope`` is a 422.
+``GET /v1/budgets`` authorizes to budgets at or below the bearer credential's scope; an optional
+``?scope=<kind>:<id>`` re-roots the returned subtree at a named node, refused identically to an
+unknown one (no existence leak). ``GET /v1/spend?group_by=<dim>`` returns one scope node's
+realized spend for a period, grouped by provider, model, or a label key, over the same ``scope``
+re-rooting and authorization rules; a malformed ``group_by`` is a 422. Off the command path: both
+are GETs, no Idempotency-Key, a read-only connection. Domain errors propagate to the handler
+installed by ``tollgate.api.errors``; a malformed ``scope`` is a 422.
 """
 
 from __future__ import annotations

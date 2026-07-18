@@ -188,20 +188,16 @@ class PostgresChargebackRepository:
             bud.scope_id == scope_id,
         )
         grouping: ColumnElement[Any]
+        source = ledger.join(budget, node)
         if group_by.kind is GroupByKind.PROVIDER:
             grouping = led.provider
-            source = ledger.join(budget, node)
-        elif group_by.kind is GroupByKind.MODEL:
-            grouping = res.model
-            source = ledger.join(budget, node).outerjoin(
-                reservation, res.reservation_id == led.reservation_id
-            )
-        else:  # LABEL: labels ->> :key (parse_group_by guarantees a non-empty key)
-            key = group_by.label_key or ""
-            grouping = res.labels.op("->>")(key)
-            source = ledger.join(budget, node).outerjoin(
-                reservation, res.reservation_id == led.reservation_id
-            )
+        else:
+            source = source.outerjoin(reservation, res.reservation_id == led.reservation_id)
+            if group_by.kind is GroupByKind.MODEL:
+                grouping = res.model
+            else:  # LABEL: labels ->> :key (parse_group_by guarantees a non-empty key)
+                key = group_by.label_key or ""
+                grouping = res.labels.op("->>")(key)
         stmt = (
             select(grouping.label("grp"), spend.label("spend_micro"))
             .select_from(source)

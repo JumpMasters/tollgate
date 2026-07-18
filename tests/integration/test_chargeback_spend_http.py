@@ -248,3 +248,19 @@ async def test_missing_group_by_is_422(
     response = await client.get("/v1/spend", headers=_auth(_ORG_TOKEN))
     assert response.status_code == 422
     assert "detail" in response.json()
+
+
+async def test_period_start_filters_to_an_empty_period(
+    client: httpx.AsyncClient, committing_engine: AsyncEngine
+) -> None:
+    await _seed(committing_engine)
+    response = await client.get(
+        "/v1/spend",
+        params={"group_by": "provider", "period_start": "2020-01-01T00:00:00Z"},
+        headers=_auth(_ORG_TOKEN),
+    )
+    assert response.status_code == 200
+    # _seed only writes ledger rows for the current calendar month; a route that ignored
+    # period_start would fall back to that month and return the non-empty rollup the other
+    # tests assert, so an empty groups list proves the query param actually flows through.
+    assert response.json()["groups"] == []

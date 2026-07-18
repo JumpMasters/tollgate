@@ -61,6 +61,7 @@ async def test_build_app_wires_the_chargeback_route_and_handler() -> None:
     try:
         assert hasattr(app.state, "chargeback_handler")
         assert "/v1/budgets" in app.openapi()["paths"]
+        assert "/v1/spend" in app.openapi()["paths"]
     finally:
         await app.state.engine.dispose()
 
