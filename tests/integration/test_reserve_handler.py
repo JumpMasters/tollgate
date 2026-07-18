@@ -200,6 +200,36 @@ async def test_insufficient_budget_denies_and_rolls_everything_back(
     )
 
 
+async def test_insufficient_budget_denial_is_not_stale_cached(
+    committing_engine: AsyncEngine,
+) -> None:
+    await _seed_prices(committing_engine)
+    await _seed_tree(committing_engine, user_limit=100)  # estimate 300 > 100 -> user binds
+    handler = _handler(committing_engine)
+    command = _command()
+    with pytest.raises(InsufficientBudget):
+        await handler.reserve(_auth(), command)
+    assert await _scalar(committing_engine, "SELECT count(*) FROM idempotency_key") == 0
+
+    # Raise the binding budget's limit so the same worst-case estimate now fits.
+    async with committing_engine.begin() as conn:
+        await conn.execute(
+            budget.update().where(budget.c.budget_id == "b-user").values(hard_limit_micro=1000)
+        )
+
+    # A denial rolls back the eager idempotency claim (ADR 0007), so the same key is not
+    # pinned to the earlier denial -- this is a fresh claim, and it succeeds.
+    result = await handler.reserve(_auth(), command)
+    assert result.estimated_micro == 300
+    assert (
+        await _scalar(
+            committing_engine, "SELECT count(*) FROM idempotency_key WHERE status='succeeded'"
+        )
+        == 1
+    )
+    assert await _scalar(committing_engine, "SELECT count(*) FROM reservation") == 1
+
+
 async def test_reserve_includes_an_authorized_project_budget(
     committing_engine: AsyncEngine,
 ) -> None:
