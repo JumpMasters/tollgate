@@ -80,6 +80,29 @@ def test_the_lifespan_disposes_the_engine() -> None:
     assert app.state.engine.sync_engine.pool is not pool_before
 
 
+def test_a_datastore_outage_yields_the_503_envelope() -> None:
+    # End to end: a real connection failure (a refused port) on the auth path must surface as
+    # the fail-closed 503 EnforcementUnavailable envelope, not an off-contract 500 (#62).
+    settings = Settings(
+        database_url="postgresql+asyncpg://u:p@127.0.0.1:1/db",
+        token_hash_secret="test-pepper",
+    )
+    app = build_app(settings)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post(
+            "/v1/reserve",
+            json={
+                "provider": "anthropic",
+                "model": "claude",
+                "input_bound_tokens": 100,
+                "max_output_tokens": 100,
+            },
+            headers={"Authorization": "Bearer x", "Idempotency-Key": "k"},
+        )
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "enforcement_unavailable"
+
+
 def test_worker_engine_builds_an_async_engine() -> None:
     engine = _worker_engine(_settings())
     assert isinstance(engine, AsyncEngine)

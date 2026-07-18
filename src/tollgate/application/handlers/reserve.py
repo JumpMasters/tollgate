@@ -30,6 +30,7 @@ from tollgate.domain.credentials import Principal
 from tollgate.domain.errors import (
     IdempotencyKeyReuse,
     InsufficientBudget,
+    NonPositiveEstimate,
     TollgateError,
     UnknownModel,
 )
@@ -140,6 +141,10 @@ class ReserveHandler:
                 input_bound_tokens=command.input_bound_tokens,
                 max_output_tokens=command.max_output_tokens,
             )
+            if estimate == 0:
+                raise NonPositiveEstimate(
+                    "worst-case estimate is zero; a reserve must gate a positive amount"
+                )
             now = self._clock.now()
             period_start = calendar_month_start(now)
             ttl_deadline = now + timedelta(seconds=self._ttl_seconds)

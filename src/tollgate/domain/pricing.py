@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
-from tollgate.domain.money import round_micro
+from tollgate.domain.money import ceil_micro, round_micro
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,8 +70,11 @@ def estimate_micro(price: ModelPrice, *, input_bound_tokens: int, max_output_tok
     """Worst-case reserve estimate: full (non-cached) input price + output ceiling.
 
     ``input_bound_tokens`` is the tokenizer-derived upper bound on the prompt and
-    ``max_output_tokens`` the provider ceiling, so this over-reserves in the safe
-    direction (§4). Returns integer micro-USD.
+    ``max_output_tokens`` the provider ceiling. The total is rounded **up** to whole
+    micro-USD (:func:`ceil_micro`), so the estimate over-reserves in the safe direction
+    literally — a sub-micro worst case still holds ``>= 1`` micro rather than rounding to
+    zero, and the held estimate always covers the half-up-rounded actual. Returns integer
+    micro-USD.
     """
     if input_bound_tokens < 0 or max_output_tokens < 0:
         raise ValueError("token counts must be non-negative")
@@ -79,7 +82,7 @@ def estimate_micro(price: ModelPrice, *, input_bound_tokens: int, max_output_tok
         price.input_micro_per_token * input_bound_tokens
         + price.output_micro_per_token * max_output_tokens
     )
-    return round_micro(total)
+    return ceil_micro(total)
 
 
 def actual_micro(
