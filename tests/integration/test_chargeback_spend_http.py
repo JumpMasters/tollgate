@@ -184,10 +184,39 @@ async def test_org_filter_to_user_reroots(
     client: httpx.AsyncClient, committing_engine: AsyncEngine
 ) -> None:
     await _seed(committing_engine)
-    response = await client.get(
+    # Make the org node's own rollup diverge from the user node's, so a re-root that
+    # actually targets user:u1 is distinguishable from one that ignores the filter and
+    # falls back to the org credential's own scope.
+    period = calendar_month_start(datetime.now(UTC))
+    async with committing_engine.begin() as conn:
+        await conn.execute(
+            ledger.insert().values(
+                entry_id="e4o",
+                kind="commit_adjust",
+                budget_id="b-org",
+                period_start=period,
+                reservation_id="r1",
+                delta_committed_micro=500,
+                delta_overage_micro=0,
+                provider="anthropic",
+            )
+        )
+
+    reroot = await client.get(
         "/v1/spend", params={"group_by": "provider", "scope": "user:u1"}, headers=_auth(_ORG_TOKEN)
     )
-    assert response.status_code == 200
+    assert reroot.status_code == 200
+    reroot_groups = {g["group"]: g["spend_micro"] for g in reroot.json()["groups"]}
+    # Proves the filter re-rooted to user:u1's own numbers, not the org's inflated 750.
+    assert reroot_groups == {"anthropic": 250, "openai": 100}
+
+    own_scope = await client.get(
+        "/v1/spend", params={"group_by": "provider"}, headers=_auth(_ORG_TOKEN)
+    )
+    assert own_scope.status_code == 200
+    own_scope_groups = {g["group"]: g["spend_micro"] for g in own_scope.json()["groups"]}
+    # Demonstrates the org node's own total genuinely differs from the re-rooted result.
+    assert own_scope_groups == {"anthropic": 750, "openai": 100}
 
 
 async def test_user_filter_to_org_is_403(
@@ -209,6 +238,7 @@ async def test_malformed_group_by_is_422(
         "/v1/spend", params={"group_by": "nonsense"}, headers=_auth(_ORG_TOKEN)
     )
     assert response.status_code == 422
+    assert "detail" in response.json()
 
 
 async def test_missing_group_by_is_422(
@@ -217,3 +247,4 @@ async def test_missing_group_by_is_422(
     await _seed(committing_engine)
     response = await client.get("/v1/spend", headers=_auth(_ORG_TOKEN))
     assert response.status_code == 422
+    assert "detail" in response.json()
