@@ -55,6 +55,9 @@ async def test_idempotency_reaper_deletes_only_aged_keys_in_bounded_batches(
     deleted = await handler.run_once()
     assert deleted == 5  # all five aged keys, across three batches
     assert await _count(committing_engine) == 3  # the three fresh keys survive
+    async with committing_engine.connect() as conn:
+        remaining = (await conn.execute(text("SELECT key FROM idempotency_key"))).scalars().all()
+    assert set(remaining) == {"fresh-0", "fresh-1", "fresh-2"}
 
 
 async def test_idempotency_reaper_with_no_aged_keys_deletes_nothing(
