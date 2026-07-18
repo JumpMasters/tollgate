@@ -66,6 +66,19 @@ async def test_build_app_wires_the_chargeback_route_and_handler() -> None:
         await app.state.engine.dispose()
 
 
+async def test_openapi_documents_the_error_envelope_for_domain_statuses() -> None:
+    """The error envelope is discoverable in the schema, not just the success body (ADR 0031)."""
+    app = build_app(Settings(token_hash_secret="unit-secret"))
+    try:
+        schema = app.openapi()
+        budgets_responses = schema["paths"]["/v1/budgets"]["get"]["responses"]
+        assert "403" in budgets_responses
+        reserve_responses = schema["paths"]["/v1/reserve"]["post"]["responses"]
+        assert "402" in reserve_responses
+    finally:
+        await app.state.engine.dispose()
+
+
 def test_spend_response_maps_groups_and_echoes_dimension() -> None:
     from datetime import UTC, datetime
 
