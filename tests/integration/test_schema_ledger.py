@@ -53,10 +53,17 @@ async def test_ledger_has_budget_ts_index(db_conn: AsyncConnection) -> None:
 
 
 async def test_idempotency_key_primary_key_rejects_duplicate(db_conn: AsyncConnection) -> None:
+    # The primary key is (principal_id, key): the same key under the same principal is a duplicate.
     await db_conn.execute(
-        text("INSERT INTO idempotency_key (key, command_fingerprint) VALUES ('k1', 'fp')")
+        text(
+            "INSERT INTO idempotency_key (principal_id, key, command_fingerprint) "
+            "VALUES ('p1', 'k1', 'fp')"
+        )
     )
     with pytest.raises(IntegrityError):
         await db_conn.execute(
-            text("INSERT INTO idempotency_key (key, command_fingerprint) VALUES ('k1', 'fp2')")
+            text(
+                "INSERT INTO idempotency_key (principal_id, key, command_fingerprint) "
+                "VALUES ('p1', 'k1', 'fp2')"
+            )
         )

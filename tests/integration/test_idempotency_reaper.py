@@ -22,11 +22,16 @@ class _ClockAt:
         return self._now
 
 
-async def _insert_key(engine: AsyncEngine, *, key: str, created_at: datetime) -> None:
+async def _insert_key(
+    engine: AsyncEngine, *, key: str, created_at: datetime, principal_id: str = "p1"
+) -> None:
     async with engine.begin() as conn:
         await conn.execute(
             idempotency_key.insert().values(
-                key=key, command_fingerprint="fp", created_at=created_at
+                principal_id=principal_id,
+                key=key,
+                command_fingerprint="fp",
+                created_at=created_at,
             )
         )
 

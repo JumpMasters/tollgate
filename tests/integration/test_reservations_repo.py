@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from sqlalchemy import text
 from sqlalchemy.engine import Row
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from tollgate.adapters.postgres.reservations_repo import PostgresReservationRepository
 from tollgate.adapters.postgres.schema import org, price_book, reservation, team, user_principal
+from tollgate.domain.errors import IdempotencyKeyReuse
 from tollgate.domain.ids import BudgetId, PrincipalId, ReservationId
 from tollgate.domain.records import ReservationLineRecord, ReservationRecord
 from tollgate.domain.reservations import ReservationStatus
@@ -60,6 +63,36 @@ def _line(reservation_id: str = "r1", budget_id: str = "b1") -> ReservationLineR
         period_start=PERIOD,
         amount_micro=100,
     )
+
+
+async def test_reusing_a_key_maps_the_unique_violation_to_key_reuse(
+    db_conn: AsyncConnection,
+) -> None:
+    # Reusing an idempotency key (e.g. after the key reaper deleted its row) collides with the
+    # surviving reservation's per-principal unique guard; the repo maps that IntegrityError to
+    # IdempotencyKeyReuse (409) rather than letting it surface as an unmapped 500 (#61).
+    await _seed_context(db_conn)
+    repo = PostgresReservationRepository(db_conn)
+    await repo.insert(_record(reservation_id="r1", idem="dup"), [_line("r1")])
+    with pytest.raises(IdempotencyKeyReuse):
+        await repo.insert(_record(reservation_id="r2", idem="dup"), [_line("r2")])
+
+
+async def test_same_key_under_different_principals_is_allowed(db_conn: AsyncConnection) -> None:
+    # The reservation guard is per principal, so two principals reusing the same key string do not
+    # collide — matching the per-principal idempotency-key namespace (#71).
+    await _seed_context(db_conn)
+    await db_conn.execute(text("INSERT INTO user_principal (user_id, team_id) VALUES ('u2', 't1')"))
+    repo = PostgresReservationRepository(db_conn)
+    await repo.insert(_record(reservation_id="r1", idem="dup"), [_line("r1")])
+    other = replace(_record(reservation_id="r2", idem="dup"), principal_id=PrincipalId("u2"))
+    await repo.insert(other, [_line("r2")])
+    count = (
+        await db_conn.execute(
+            text("SELECT count(*) AS n FROM reservation WHERE idempotency_key = 'dup'")
+        )
+    ).scalar_one()
+    assert count == 2
 
 
 async def _fetch_reservation(conn: AsyncConnection, reservation_id: str) -> Row[tuple[object, ...]]:

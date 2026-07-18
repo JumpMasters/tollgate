@@ -148,18 +148,21 @@ class ReservationRepository(Protocol):
 
 
 class IdempotencyRepository(Protocol):
-    """Claim/replay store for command idempotency keys (§5.1)."""
+    """Claim/replay store for command idempotency keys, scoped per principal (§5.1, #71)."""
 
-    async def claim(self, key: str, fingerprint: str) -> IdempotencyClaim:
-        """Claim ``key`` for ``fingerprint``.
+    async def claim(self, principal_id: str, key: str, fingerprint: str) -> IdempotencyClaim:
+        """Claim ``key`` for ``fingerprint`` within ``principal_id``'s key namespace.
 
         ``FRESH`` if newly inserted (the caller owns the effect); ``REPLAY`` with the stored
         response if the key already completed; ``MISMATCH`` if the key exists under a different
-        command fingerprint (key reuse).
+        command fingerprint (key reuse). Keys are scoped to ``principal_id``, so two principals
+        that choose the same key string never collide.
         """
         ...
 
-    async def store_response(self, key: str, status: str, response: Mapping[str, Any]) -> None:
+    async def store_response(
+        self, principal_id: str, key: str, status: str, response: Mapping[str, Any]
+    ) -> None:
         """Cache a command's response on its key row so a later duplicate replays it."""
         ...
 

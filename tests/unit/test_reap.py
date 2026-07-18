@@ -158,10 +158,12 @@ class _StubBudgets:
 
 
 class _StubIdempotency:
-    async def claim(self, key: str, fingerprint: str) -> IdempotencyClaim:
+    async def claim(self, principal_id: str, key: str, fingerprint: str) -> IdempotencyClaim:
         raise AssertionError("the reservation reaper never claims idempotency keys")
 
-    async def store_response(self, key: str, status: str, response: Mapping[str, Any]) -> None:
+    async def store_response(
+        self, principal_id: str, key: str, status: str, response: Mapping[str, Any]
+    ) -> None:
         raise AssertionError("the reservation reaper never claims idempotency keys")
 
     async def delete_expired(self, cutoff: datetime, limit: int) -> int:
@@ -261,10 +263,12 @@ class _FakeIdempotency:
         self._removals = list(removals)
         self.calls: list[tuple[datetime, int]] = []
 
-    async def claim(self, key: str, fingerprint: str) -> IdempotencyClaim:
+    async def claim(self, principal_id: str, key: str, fingerprint: str) -> IdempotencyClaim:
         raise AssertionError("the idempotency reaper never claims a key")
 
-    async def store_response(self, key: str, status: str, response: Mapping[str, Any]) -> None:
+    async def store_response(
+        self, principal_id: str, key: str, status: str, response: Mapping[str, Any]
+    ) -> None:
         raise AssertionError("the idempotency reaper never stores a response")
 
     async def delete_expired(self, cutoff: datetime, limit: int) -> int:

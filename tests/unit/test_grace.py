@@ -98,13 +98,15 @@ class _FakeIdempotency:
         self, outcome: ClaimOutcome = ClaimOutcome.FRESH, response: Mapping[str, Any] | None = None
     ) -> None:
         self._claim = IdempotencyClaim(outcome, response=response)
-        self.stored: list[tuple[str, str, dict[str, Any]]] = []
+        self.stored: list[tuple[str, str, str, dict[str, Any]]] = []
 
-    async def claim(self, key: str, fingerprint: str) -> IdempotencyClaim:
+    async def claim(self, principal_id: str, key: str, fingerprint: str) -> IdempotencyClaim:
         return self._claim
 
-    async def store_response(self, key: str, status: str, response: Mapping[str, Any]) -> None:
-        self.stored.append((key, status, dict(response)))
+    async def store_response(
+        self, principal_id: str, key: str, status: str, response: Mapping[str, Any]
+    ) -> None:
+        self.stored.append((principal_id, key, status, dict(response)))
 
     async def delete_expired(self, cutoff: datetime, limit: int) -> int:
         raise AssertionError("this handler never reaps keys")
@@ -321,6 +323,7 @@ async def test_backfill_records_spend_on_every_applicable_node() -> None:
     assert all(e.price_book_version == "2026-06-22" for e in ctx.ledger.appended)
     assert ctx.idempotency.stored == [
         (
+            "u1",
             "idem-grace",
             "succeeded",
             {"actual_micro": _ACTUAL, "price_book_version": "2026-06-22"},

@@ -96,13 +96,15 @@ class _FakeIdempotency:
         self, outcome: ClaimOutcome = ClaimOutcome.FRESH, response: Mapping[str, Any] | None = None
     ) -> None:
         self._claim = IdempotencyClaim(outcome, response=response)
-        self.stored: list[tuple[str, str, dict[str, Any]]] = []
+        self.stored: list[tuple[str, str, str, dict[str, Any]]] = []
 
-    async def claim(self, key: str, fingerprint: str) -> IdempotencyClaim:
+    async def claim(self, principal_id: str, key: str, fingerprint: str) -> IdempotencyClaim:
         return self._claim
 
-    async def store_response(self, key: str, status: str, response: Mapping[str, Any]) -> None:
-        self.stored.append((key, status, dict(response)))
+    async def store_response(
+        self, principal_id: str, key: str, status: str, response: Mapping[str, Any]
+    ) -> None:
+        self.stored.append((principal_id, key, status, dict(response)))
 
     async def delete_expired(self, cutoff: datetime, limit: int) -> int:
         raise AssertionError("this handler never reaps keys")
@@ -295,7 +297,7 @@ async def test_cancel_releases_every_line_and_persists_the_envelope() -> None:
     assert all(e.reservation_id == "res-1" for e in ctx.ledger.appended)
     assert all(e.price_book_version == "2026-06-22" for e in ctx.ledger.appended)
     assert ctx.idempotency.stored == [
-        ("idem-cancel", "succeeded", {"reservation_id": "res-1", "released_micro": 300})
+        ("u1", "idem-cancel", "succeeded", {"reservation_id": "res-1", "released_micro": 300})
     ]
     assert uow.committed is True
 

@@ -98,15 +98,17 @@ class _FakeIdempotency:
         self, outcome: ClaimOutcome = ClaimOutcome.FRESH, response: Mapping[str, Any] | None = None
     ) -> None:
         self._claim = IdempotencyClaim(outcome, response=response)
-        self.claimed: tuple[str, str] | None = None
-        self.stored: list[tuple[str, str, dict[str, Any]]] = []
+        self.claimed: tuple[str, str, str] | None = None
+        self.stored: list[tuple[str, str, str, dict[str, Any]]] = []
 
-    async def claim(self, key: str, fingerprint: str) -> IdempotencyClaim:
-        self.claimed = (key, fingerprint)
+    async def claim(self, principal_id: str, key: str, fingerprint: str) -> IdempotencyClaim:
+        self.claimed = (principal_id, key, fingerprint)
         return self._claim
 
-    async def store_response(self, key: str, status: str, response: Mapping[str, Any]) -> None:
-        self.stored.append((key, status, dict(response)))
+    async def store_response(
+        self, principal_id: str, key: str, status: str, response: Mapping[str, Any]
+    ) -> None:
+        self.stored.append((principal_id, key, status, dict(response)))
 
     async def delete_expired(self, cutoff: datetime, limit: int) -> int:
         raise AssertionError("this handler never reaps keys")
@@ -318,6 +320,7 @@ async def test_reserve_succeeds_and_persists_the_envelope() -> None:
     assert all(e.delta_reserved_micro == _ESTIMATE for e in ctx.ledger.appended)
     assert ctx.idempotency.stored == [
         (
+            "u1",
             "idem-1",
             "succeeded",
             {
@@ -329,6 +332,12 @@ async def test_reserve_succeeds_and_persists_the_envelope() -> None:
         )
     ]
     assert uow.committed is True
+    # the acting principal scopes the idempotency claim and the cached response (#71)
+    assert ctx.idempotency.claimed == (
+        "u1",
+        "idem-1",
+        reserve_fingerprint(_principal(), _command()),
+    )
 
 
 async def test_reserve_replays_a_stored_response_without_re_reserving() -> None:

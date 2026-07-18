@@ -89,8 +89,9 @@ class GraceBackfillHandler:
         attributed is an operational alert, not silent loss.
         """
         fingerprint = grace_backfill_fingerprint(auth.principal, command)
+        principal_id = auth.credential.principal_id
         async with self._uow.begin() as tx:
-            claim = await tx.idempotency.claim(command.idempotency_key, fingerprint)
+            claim = await tx.idempotency.claim(principal_id, command.idempotency_key, fingerprint)
             if claim.outcome is ClaimOutcome.REPLAY:
                 response = claim.response
                 if response is None:  # pragma: no cover - a committed command always stored one
@@ -133,6 +134,9 @@ class GraceBackfillHandler:
 
             result = GraceBackfillResult(actual_micro=actual, price_book_version=priced.version)
             await tx.idempotency.store_response(
-                command.idempotency_key, RESPONSE_SUCCEEDED, _result_to_response(result)
+                principal_id,
+                command.idempotency_key,
+                RESPONSE_SUCCEEDED,
+                _result_to_response(result),
             )
             return result
