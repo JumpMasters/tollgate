@@ -1,6 +1,6 @@
 """The shared background-worker polling loop (§5.5).
 
-A worker is a pure ``run_once`` tick (a reaper, in plan 13) wrapped by ``run_forever``, which
+A worker is a pure ``run_once`` tick (a reaper) wrapped by ``run_forever``, which
 polls it on a fixed interval until a stop event is set. Each tick is bounded and idempotent, so a
 transient failure is logged and the loop continues — a reaper is a backstop and must not die on
 one bad poll. This module imports only the standard library: the tick logic lives in the
@@ -22,12 +22,6 @@ class SupportsRunOnce(Protocol):
     """One bounded, idempotent unit of polled work (a reaper's ``run_once``)."""
 
     async def run_once(self) -> object: ...
-
-
-class SupportsDispose(Protocol):
-    """A resource the worker loop releases on shutdown (an engine's ``dispose``)."""
-
-    async def dispose(self) -> None: ...
 
 
 async def run_forever(

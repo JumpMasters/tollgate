@@ -12,6 +12,7 @@ import contextlib
 import signal
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from typing import Protocol
 
 from fastapi import FastAPI
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -32,7 +33,7 @@ from tollgate.application.handlers.read import ChargebackHandler
 from tollgate.application.handlers.reap import IdempotencyReaperHandler, ReservationReaperHandler
 from tollgate.application.handlers.reserve import ReserveHandler
 from tollgate.config.settings import Settings, load_settings
-from tollgate.workers.runner import SupportsDispose, SupportsRunOnce, run_forever
+from tollgate.workers.runner import SupportsRunOnce, run_forever
 
 
 def _authenticator(
@@ -125,6 +126,12 @@ def _idempotency_reaper(engine: AsyncEngine, settings: Settings) -> IdempotencyR
         ttl_hours=settings.idempotency_ttl_hours,
         batch_size=settings.idempotency_reaper_batch_size,
     )
+
+
+class SupportsDispose(Protocol):
+    """A resource the worker loop releases on shutdown (an engine's ``dispose``)."""
+
+    async def dispose(self) -> None: ...
 
 
 async def _serve(

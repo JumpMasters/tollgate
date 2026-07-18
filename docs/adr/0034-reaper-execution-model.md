@@ -12,9 +12,10 @@ ADR 0008 established the reaper architecture: reservations carry a TTL; a polled
 releases abandoned held reservations in bounded per-item transactions using `FOR UPDATE SKIP
 LOCKED`; a second reaper batch-deletes idempotency keys past a 24h retention; an index on
 `(status, ttl_deadline)` keeps the scan cheap; and the reaper composes with the heartbeat and
-self-healing late commit (ADR 0018, refined by ADR 0029). Plan 13 **implements** that architecture.
-This record captures the execution-model decisions ADR 0008 left open — how a tick is structured,
-which transaction seam it uses, and where the worker code lives given the import-linter boundary
+self-healing late commit (ADR 0018, refined by ADR 0029). The reaper workers implement that
+architecture. This record captures the execution-model decisions ADR 0008 left open — how a tick is
+structured, which transaction seam it uses, and where the worker code lives given the import-linter
+boundary
 (ADR 0013). It refines ADR 0008; it does not supersede it.
 
 ## Decision

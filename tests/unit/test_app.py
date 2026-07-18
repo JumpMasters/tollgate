@@ -8,9 +8,10 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
+from sqlalchemy.ext.asyncio import AsyncEngine
 
 from tollgate.adapters.postgres.engine import build_engine
-from tollgate.app import _idempotency_reaper, _reservation_reaper, _serve, build_app
+from tollgate.app import _idempotency_reaper, _reservation_reaper, _serve, _worker_engine, build_app
 from tollgate.application.handlers.cancel import CancelHandler
 from tollgate.application.handlers.commit import CommitHandler
 from tollgate.application.handlers.extend import ExtendHandler
@@ -77,6 +78,11 @@ def test_the_lifespan_disposes_the_engine() -> None:
         pass
     # dispose() replaces the engine's connection pool
     assert app.state.engine.sync_engine.pool is not pool_before
+
+
+def test_worker_engine_builds_an_async_engine() -> None:
+    engine = _worker_engine(_settings())
+    assert isinstance(engine, AsyncEngine)
 
 
 def test_reservation_reaper_builder_threads_settings() -> None:
