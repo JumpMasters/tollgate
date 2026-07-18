@@ -6,7 +6,7 @@ variables prefixed ``TOLLGATE_``.
 
 from __future__ import annotations
 
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,8 +15,8 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="TOLLGATE_", env_file=".env", extra="ignore")
 
-    database_url: str = Field(
-        default="postgresql+asyncpg://tollgate:tollgate@localhost:5432/tollgate",
+    database_url: SecretStr = Field(
+        default=SecretStr("postgresql+asyncpg://tollgate:tollgate@localhost:5432/tollgate"),
         description="Async SQLAlchemy URL for the Postgres ledger of record.",
     )
     reserve_statement_timeout_ms: int = Field(
@@ -29,8 +29,8 @@ class Settings(BaseSettings):
         ge=1,
         description="Default reservation TTL before the reaper may release it.",
     )
-    token_hash_secret: str = Field(
-        default="",
+    token_hash_secret: SecretStr = Field(
+        default=SecretStr(""),
         description=(
             "Keyed-hash secret (server pepper) for bearer-token hashing (ADR 0026). "
             "Must be set for the app to start; there is no usable default."

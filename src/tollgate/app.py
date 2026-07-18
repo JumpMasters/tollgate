@@ -52,11 +52,11 @@ def _authenticator(
 def build_app(settings: Settings | None = None) -> FastAPI:
     """Wire settings, the datastore engine, and the HTTP surface together."""
     settings = settings or load_settings()
-    if not settings.token_hash_secret:
+    if not settings.token_hash_secret.get_secret_value():
         msg = "TOLLGATE_TOKEN_HASH_SECRET must be set: it keys bearer-token hashing (ADR 0026)"
         raise ValueError(msg)
     engine = build_engine(
-        settings.database_url,
+        settings.database_url.get_secret_value(),
         statement_timeout_ms=settings.reserve_statement_timeout_ms,
     )
 
@@ -68,7 +68,9 @@ def build_app(settings: Settings | None = None) -> FastAPI:
     app = create_api(lifespan=lifespan)
     app.state.engine = engine
     app.state.settings = settings
-    app.state.authenticate = _authenticator(engine, token_secret=settings.token_hash_secret)
+    app.state.authenticate = _authenticator(
+        engine, token_secret=settings.token_hash_secret.get_secret_value()
+    )
     uow = PostgresUnitOfWork(engine)
     clock = SystemClock()
     ids = Uuid7IdGenerator()

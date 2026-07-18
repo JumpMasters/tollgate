@@ -28,7 +28,7 @@ target_metadata = metadata
 
 
 def _database_url() -> str:
-    return load_settings().database_url
+    return load_settings().database_url.get_secret_value()
 
 
 def _run_migrations(connection: Connection) -> None:
