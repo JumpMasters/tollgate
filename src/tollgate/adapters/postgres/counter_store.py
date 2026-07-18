@@ -17,7 +17,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from tollgate.adapters.postgres.schema import budget, budget_balance
-from tollgate.domain.errors import BudgetNotFound
+from tollgate.domain.errors import BalanceGuardViolation, BudgetNotFound
 from tollgate.domain.ids import BudgetId
 from tollgate.domain.pricing import Reconciliation
 
@@ -111,7 +111,8 @@ class PostgresCounterStore:
                 overage_micro=budget_balance.c.overage_micro + overage_delta,
             )
         )
-        await self._conn.execute(stmt)
+        result = await self._conn.execute(stmt)
+        self._require_one(result.rowcount, "commit", budget_id, period_start)
 
     async def release(self, budget_id: BudgetId, period_start: datetime, amount_micro: int) -> None:
         """Release a held estimate back to the node; the guard keeps reserved >= 0."""
@@ -124,7 +125,22 @@ class PostgresCounterStore:
             )
             .values(reserved_micro=budget_balance.c.reserved_micro - amount_micro)
         )
-        await self._conn.execute(stmt)
+        result = await self._conn.execute(stmt)
+        self._require_one(result.rowcount, "release", budget_id, period_start)
+
+    @staticmethod
+    def _require_one(rowcount: int, op: str, budget_id: BudgetId, period_start: datetime) -> None:
+        """Fail loudly if a guarded balance write matched a row count other than one (#72).
+
+        commit/release are guarded conditional writes whose guard holds on every legal path;
+        a zero-row match means the balance state diverged from what the ledger is recording,
+        so the command must roll back instead of committing a silent balance/ledger divergence.
+        """
+        if rowcount != 1:
+            raise BalanceGuardViolation(
+                f"{op} guard matched {rowcount} rows for budget {budget_id} "
+                f"period {period_start.isoformat()}"
+            )
 
     async def apply_spend(
         self, budget_id: BudgetId, period_start: datetime, amount_micro: int

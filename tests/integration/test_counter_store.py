@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from tollgate.adapters.postgres.counter_store import PostgresCounterStore
+from tollgate.domain.errors import BalanceGuardViolation
 from tollgate.domain.ids import BudgetId
 
 PERIOD = datetime(2026, 6, 1, tzinfo=UTC)
@@ -153,11 +155,29 @@ async def test_release_lowers_reserved(db_conn: AsyncConnection) -> None:
     assert await _balance(db_conn) == (1000, 400, 0, 0)
 
 
-async def test_release_guard_keeps_reserved_non_negative(db_conn: AsyncConnection) -> None:
+async def test_release_over_held_fails_loudly_instead_of_silently_no_opping(
+    db_conn: AsyncConnection,
+) -> None:
     await _seed_budget(db_conn, limit=1000)
     store = PostgresCounterStore(db_conn)
     await store.ensure_period(BudgetId("b1"), PERIOD)
     await store.reserve(BudgetId("b1"), PERIOD, 200)
-    # Releasing more than is held matches zero rows: reserved is left unchanged.
-    await store.release(BudgetId("b1"), PERIOD, 500)
-    assert await _balance(db_conn) == (1000, 200, 0, 0)
+    # Releasing more than is held matches zero rows. That is unreachable on any legal path,
+    # so it must fail the transaction loudly rather than silently no-op the balance (#72).
+    with pytest.raises(BalanceGuardViolation):
+        await store.release(BudgetId("b1"), PERIOD, 500)
+    assert await _balance(db_conn) == (1000, 200, 0, 0)  # the guarded write matched no row
+
+
+async def test_commit_over_held_fails_loudly_instead_of_silently_no_opping(
+    db_conn: AsyncConnection,
+) -> None:
+    await _seed_budget(db_conn, limit=1000)
+    store = PostgresCounterStore(db_conn)
+    await store.ensure_period(BudgetId("b1"), PERIOD)
+    await store.reserve(BudgetId("b1"), PERIOD, 100)
+    # reserved_micro (200) exceeds the held amount (100): the commit guard matches no row,
+    # which would silently drop the balance move while the ledger records it — raise (#72).
+    with pytest.raises(BalanceGuardViolation):
+        await store.commit(BudgetId("b1"), PERIOD, reserved_micro=200, actual_micro=50)
+    assert await _balance(db_conn) == (1000, 100, 0, 0)

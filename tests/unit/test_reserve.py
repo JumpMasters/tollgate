@@ -19,6 +19,7 @@ from tollgate.domain.errors import (
     BudgetNotFound,
     IdempotencyKeyReuse,
     InsufficientBudget,
+    NonPositiveEstimate,
     ScopeNotAuthorized,
     UnknownModel,
 )
@@ -377,6 +378,18 @@ async def test_reserve_denies_insufficient_budget_naming_the_binding_node() -> N
         await handler.reserve(_auth(), _command())
     assert excinfo.value.scope == "user:u1"
     assert uow._ctx.reservations.inserted is None  # nothing persisted
+    assert uow.rolled_back is True
+
+
+async def test_reserve_denies_a_zero_worst_case_estimate() -> None:
+    # A reserve whose worst-case estimate is zero gates nothing; deny it before touching
+    # any balance, and roll back so no idempotency key is cached (#65).
+    handler, uow = _build()
+    with pytest.raises(NonPositiveEstimate):
+        await handler.reserve(_auth(), _command(input_bound_tokens=0, max_output_tokens=0))
+    assert uow._ctx.reserve_tx.calls == []  # never reached the balance guard
+    assert uow._ctx.reservations.inserted is None
+    assert uow._ctx.idempotency.stored == []
     assert uow.rolled_back is True
 
 

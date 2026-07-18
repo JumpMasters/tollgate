@@ -62,15 +62,15 @@ def test_estimate_is_input_bound_plus_output_ceiling() -> None:
     assert estimate_micro(PRICE, input_bound_tokens=1000, max_output_tokens=500) == 7500
 
 
-def test_estimate_rounds_half_up() -> None:
+def test_estimate_rounds_up_to_cover_the_worst_case() -> None:
     cheap = ModelPrice(
         provider="openai",
         model="tiny",
-        input_micro_per_token=Decimal("0.5"),
+        input_micro_per_token=Decimal("0.4"),
         output_micro_per_token=Decimal("0"),
         cached_input_micro_per_token=Decimal("0"),
     )
-    # 0.5 * 1 + 0 → 0.5 → rounds half-up to 1
+    # 0.4 * 1 + 0 → 0.4 → the estimate ceilings up so it never under-reserves (#77).
     assert estimate_micro(cheap, input_bound_tokens=1, max_output_tokens=0) == 1
 
 

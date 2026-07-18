@@ -34,6 +34,26 @@ class BudgetNotFound(TollgateError):
     """No budget governs the requested scope."""
 
 
+class NonPositiveEstimate(TollgateError):
+    """A reserve's worst-case estimate is zero, so it would gate nothing.
+
+    A budget is only real if a reserve can stop the request that would breach it; an
+    estimate of zero consumes no headroom and admits a call whose entire cost then books
+    as unguarded overage. Such a reserve is denied so callers cannot under-declare their
+    bounds past the gate (§4, ADR 0003 caller-declared-bounds trust model).
+    """
+
+
+class BalanceGuardViolation(TollgateError):
+    """A guarded balance mutation matched a number of rows other than one.
+
+    The commit/release conditional ``WHERE`` is the invariant guard; on every legal
+    command path it matches exactly one row. A zero-row outcome means the balance state
+    diverged from what the ledger is about to record, so the command fails loudly and
+    rolls back rather than committing a silent balance/ledger divergence (defence in depth).
+    """
+
+
 class ConflictingBudgetScope(TollgateError):
     """More than one distinct budget resolved for a single scope node.
 
