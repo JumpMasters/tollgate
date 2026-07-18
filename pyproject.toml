@@ -129,3 +129,9 @@ source_modules = [
     "tollgate.workers",
 ]
 forbidden_modules = ["tollgate.adapters"]
+
+[[tool.importlinter.contracts]]
+name = "adapters implement ports without importing application (structural conformance)"
+type = "forbidden"
+source_modules = ["tollgate.adapters"]
+forbidden_modules = ["tollgate.application"]
