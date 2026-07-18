@@ -6,9 +6,11 @@ set of ``IN`` sub-selects, no recursive CTE -- and LEFT JOINs ``budget_balance``
 synthesizing zero state (against the budget's ``hard_limit_micro``) for a node that has had no
 activity this period (no balance row exists yet; a read never seeds one).
 ``resolve_scope_ancestry`` returns a node's server-derived ancestry map for the authorization
-check (section 5.0). ``PostgresChargebackReader`` hands out a repository bound to a fresh
-read-only connection per read. Explicit async SQLAlchemy Core, no ORM; satisfies the ports
-structurally without importing ``application``.
+check (section 5.0). ``spend_rollup`` sums one node's own budget ledger rows for a period,
+grouped by provider, model, or a label key -- joined on ``budget`` for that single node so a
+subtree union never double-counts shared spend (section 2). ``PostgresChargebackReader`` hands
+out a repository bound to a fresh read-only connection per read. Explicit async SQLAlchemy Core,
+no ORM; satisfies the ports structurally without importing ``application``.
 """
 
 from __future__ import annotations
@@ -16,20 +18,23 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import asynccontextmanager
 from datetime import datetime
+from typing import Any
 
-from sqlalchemy import ColumnElement, and_, or_, select
+from sqlalchemy import ColumnElement, and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from tollgate.adapters.postgres.schema import (
     budget,
     budget_alert,
     budget_balance,
+    ledger,
     org,
     project,
+    reservation,
     team,
     user_principal,
 )
-from tollgate.domain.chargeback import BudgetState
+from tollgate.domain.chargeback import BudgetState, GroupBy, GroupByKind, SpendGroup
 from tollgate.domain.ids import BudgetId
 from tollgate.domain.invariants import Balance
 from tollgate.domain.scopes import ScopeKind, scope_rank
@@ -167,6 +172,42 @@ class PostgresChargebackRepository:
             )
         ).first()
         return None if row is None else {ScopeKind.ORG: row.org_id, ScopeKind.PROJECT: scope_id}
+
+    async def spend_rollup(
+        self,
+        scope_kind: ScopeKind,
+        scope_id: str,
+        period_start: datetime,
+        group_by: GroupBy,
+    ) -> Sequence[SpendGroup]:
+        led, bud, res = ledger.c, budget.c, reservation.c
+        spend = func.sum(led.delta_committed_micro + led.delta_overage_micro)
+        node = and_(
+            bud.budget_id == led.budget_id,
+            bud.scope_kind == scope_kind.value,
+            bud.scope_id == scope_id,
+        )
+        grouping: ColumnElement[Any]
+        source = ledger.join(budget, node)
+        if group_by.kind is GroupByKind.PROVIDER:
+            grouping = led.provider
+        else:
+            source = source.outerjoin(reservation, res.reservation_id == led.reservation_id)
+            if group_by.kind is GroupByKind.MODEL:
+                grouping = res.model
+            else:  # LABEL: labels ->> :key (parse_group_by guarantees a non-empty key)
+                key = group_by.label_key or ""
+                grouping = res.labels.op("->>")(key)
+        stmt = (
+            select(grouping.label("grp"), spend.label("spend_micro"))
+            .select_from(source)
+            .where(led.period_start == period_start)
+            .group_by(grouping)
+            .having(spend != 0)
+            .order_by(spend.desc(), grouping.asc().nulls_last())
+        )
+        rows = (await self._conn.execute(stmt)).all()
+        return [SpendGroup(group=row.grp, spend_micro=int(row.spend_micro)) for row in rows]
 
 
 class PostgresChargebackReader:
