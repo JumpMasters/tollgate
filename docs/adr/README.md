@@ -42,6 +42,7 @@ The format follows Michael Nygard's
 - [0031 — HTTP wire contract for the command routes](0031-http-wire-contract-for-command-routes.md)
 - [0032 — Chargeback read wire contract](0032-chargeback-read-wire-contract.md)
 - [0033 — Chargeback spend rollups over the ledger](0033-chargeback-spend-rollups.md)
+- [0034 — Reaper execution model: polled run-once ticks reusing the command UnitOfWork](0034-reaper-execution-model.md)
 
 ## Adding a record
 

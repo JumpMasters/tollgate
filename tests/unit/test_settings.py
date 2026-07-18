@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import SecretStr
 
 from tollgate.config.settings import Settings, load_settings
 
@@ -23,3 +24,12 @@ def test_environment_overrides(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.database_url.get_secret_value() == "postgresql+asyncpg://x:y@db:5432/z"
     assert settings.reservation_ttl_seconds == 30
     assert settings.token_hash_secret.get_secret_value() == "pepper-from-env"
+
+
+def test_reaper_settings_have_sane_defaults() -> None:
+    settings = Settings(token_hash_secret=SecretStr("s"))  # match this file's construction style
+    assert settings.reaper_poll_interval_seconds == 30.0
+    assert settings.reaper_batch_size == 100
+    assert settings.idempotency_ttl_hours == 24
+    assert settings.idempotency_reaper_poll_interval_seconds == 3600.0
+    assert settings.idempotency_reaper_batch_size == 500

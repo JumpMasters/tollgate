@@ -24,6 +24,12 @@ class SupportsRunOnce(Protocol):
     async def run_once(self) -> object: ...
 
 
+class SupportsDispose(Protocol):
+    """A resource the worker loop releases on shutdown (an engine's ``dispose``)."""
+
+    async def dispose(self) -> None: ...
+
+
 async def run_forever(
     tick: SupportsRunOnce, *, interval_seconds: float, stop: asyncio.Event, name: str
 ) -> None:

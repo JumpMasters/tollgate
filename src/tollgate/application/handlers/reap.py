@@ -86,8 +86,10 @@ class IdempotencyReaperHandler:
     async def run_once(self) -> int:
         """Delete keys older than ``ttl_hours`` in bounded batches; return the count removed.
 
-        ``cutoff`` is fixed at tick start, so only finitely many rows qualify and the loop always
-        terminates — it stops as soon as a batch comes back shorter than ``batch_size``.
+        ``cutoff`` is fixed at tick start and ``batch_size >= 1`` (enforced by the
+        ``idempotency_reaper_batch_size`` setting's ``ge=1`` floor), so only finitely many rows
+        qualify and each full batch strictly shrinks the remainder — the loop stops as soon as a
+        batch comes back shorter than ``batch_size``.
         """
         cutoff = self._clock.now() - timedelta(hours=self._ttl_hours)
         deleted = 0
