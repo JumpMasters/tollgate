@@ -15,6 +15,7 @@ from fastapi import APIRouter, Header, Request
 
 from tollgate.api.dependencies import RequestAuth
 from tollgate.api.schemas import (
+    MAX_STR_LEN,
     CancelRequest,
     CancelResponse,
     CommitRequest,
@@ -45,7 +46,9 @@ from tollgate.domain.ids import ProjectId, ReservationId
 
 router = APIRouter(prefix="/v1")
 
-IdempotencyKey = Annotated[str, Header(alias="Idempotency-Key", min_length=1)]
+IdempotencyKey = Annotated[
+    str, Header(alias="Idempotency-Key", min_length=1, max_length=MAX_STR_LEN)
+]
 
 #: Domain error statuses the command routes can return, documented with the error envelope
 #: (ADR 0031). The request-validation 422 (and the domain UnknownModel 422 that shares it) is

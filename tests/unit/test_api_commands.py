@@ -167,6 +167,39 @@ def test_reserve_requires_authentication() -> None:
     assert stub.calls == []
 
 
+def test_reserve_rejects_an_oversized_idempotency_key() -> None:
+    stub = _StubReserve()
+    client = TestClient(_app(reserve_handler=stub))
+    headers = {"Authorization": "Bearer tok-1", "Idempotency-Key": "k" * 1000}
+    response = client.post("/v1/reserve", json=_RESERVE_BODY, headers=headers)
+    assert response.status_code == 422
+    assert stub.calls == []
+
+
+def test_reserve_rejects_an_empty_project_id() -> None:
+    stub = _StubReserve()
+    client = TestClient(_app(reserve_handler=stub))
+    body = {**_RESERVE_BODY, "project_id": ""}
+    response = client.post("/v1/reserve", json=body, headers=_AUTH_HEADERS)
+    assert response.status_code == 422
+    assert stub.calls == []
+
+
+def test_commit_rejects_cached_tokens_exceeding_input() -> None:
+    stub = _StubCommit()
+    client = TestClient(_app(commit_handler=stub))
+    response = client.post(
+        "/v1/commit",
+        json={
+            "reservation_id": "r1",
+            "usage": {"input_tokens": 10, "output_tokens": 0, "cached_input_tokens": 11},
+        },
+        headers=_AUTH_HEADERS,
+    )
+    assert response.status_code == 422
+    assert stub.calls == []
+
+
 def test_a_domain_error_from_the_handler_maps_through_the_envelope() -> None:
     class _Denying:
         async def reserve(self, auth: AuthContext, command: ReserveCommand) -> ReserveResult:

@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from tollgate.api.app import create_api
 from tollgate.domain.errors import (
+    AmountOutOfRange,
     AuthenticationFailed,
     BudgetNotFound,
     ConflictingBudgetScope,
@@ -40,6 +41,7 @@ def _client_raising(exc: TollgateError) -> TestClient:
         (IdempotencyKeyReuse(), 409, "idempotency_key_reuse"),
         (ReservationNotHeld(), 409, "reservation_not_held"),
         (UnknownModel("anthropic", "unpriced"), 422, "unknown_model"),
+        (AmountOutOfRange("amount out of range"), 422, "amount_out_of_range"),
         (ConflictingBudgetScope("user", "u1"), 500, "conflicting_budget_scope"),
         (EnforcementUnavailable(), 503, "enforcement_unavailable"),
     ],
