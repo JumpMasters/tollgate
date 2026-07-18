@@ -2,18 +2,20 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import text
 from sqlalchemy.engine import Row
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from tollgate.adapters.postgres.reservations_repo import PostgresReservationRepository
+from tollgate.adapters.postgres.schema import org, price_book, reservation, team, user_principal
 from tollgate.domain.ids import BudgetId, PrincipalId, ReservationId
 from tollgate.domain.records import ReservationLineRecord, ReservationRecord
 from tollgate.domain.reservations import ReservationStatus
 
 PERIOD = datetime(2026, 6, 1, tzinfo=UTC)
+_NOW = datetime(2026, 6, 23, 12, 0, tzinfo=UTC)
 
 
 async def _seed_context(conn: AsyncConnection) -> None:
@@ -151,3 +153,71 @@ async def test_claim_terminal_on_unknown_reservation_is_false(db_conn: AsyncConn
     await _seed_context(db_conn)
     repo = PostgresReservationRepository(db_conn)
     assert await repo.claim_terminal(ReservationId("nope"), ReservationStatus.COMMITTED) is False
+
+
+async def _seed_identity(conn: AsyncConnection) -> None:
+    await conn.execute(org.insert().values(org_id="o1", name="Acme"))
+    await conn.execute(team.insert().values(team_id="t1", org_id="o1", name="Payments"))
+    await conn.execute(
+        user_principal.insert().values(user_id="u1", team_id="t1", external_ref=None)
+    )
+    await conn.execute(price_book.insert().values(version="pb-1"))
+
+
+async def _insert_reservation(
+    conn: AsyncConnection, *, rid: str, ttl: datetime, status: str = "held"
+) -> None:
+    await conn.execute(
+        reservation.insert().values(
+            reservation_id=rid,
+            idempotency_key=f"idem-{rid}",
+            principal_id="u1",
+            provider="anthropic",
+            model="claude",
+            price_book_version="pb-1",
+            estimated_micro=300,
+            input_bound_tokens=100,
+            max_output_tokens=100,
+            ttl_deadline=ttl,
+            labels={},
+            status=status,
+        )
+    )
+
+
+async def test_claim_next_expired_reaps_oldest_first_then_returns_none(
+    db_conn: AsyncConnection,
+) -> None:
+    await _seed_identity(db_conn)
+    # two expired held (different ttl), one future held, one already committed
+    await _insert_reservation(db_conn, rid="r-old", ttl=_NOW - timedelta(minutes=10))
+    await _insert_reservation(db_conn, rid="r-new", ttl=_NOW - timedelta(minutes=1))
+    await _insert_reservation(db_conn, rid="r-future", ttl=_NOW + timedelta(minutes=10))
+    await _insert_reservation(
+        db_conn, rid="r-done", ttl=_NOW - timedelta(minutes=5), status="committed"
+    )
+    repo = PostgresReservationRepository(db_conn)
+
+    first = await repo.claim_next_expired(_NOW)
+    assert first is not None
+    assert first.record.reservation_id == "r-old"  # oldest ttl_deadline first
+    assert first.status == ReservationStatus.REAPED
+    assert first.record.provider == "anthropic"  # full record for ledger provenance
+
+    second = await repo.claim_next_expired(_NOW)
+    assert second is not None
+    assert second.record.reservation_id == "r-new"
+
+    assert await repo.claim_next_expired(_NOW) is None  # future + terminal are left alone
+
+    # the two claimed rows are now 'reaped'; the untouched two keep their status
+    statuses = {
+        row.reservation_id: row.status
+        for row in (await db_conn.execute(reservation.select())).all()
+    }
+    assert statuses == {
+        "r-old": "reaped",
+        "r-new": "reaped",
+        "r-future": "held",
+        "r-done": "committed",
+    }

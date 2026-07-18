@@ -94,6 +94,9 @@ class _Reservations:
     ) -> datetime | None:
         return None
 
+    async def claim_next_expired(self, now: datetime) -> StoredReservation | None:
+        raise AssertionError("this handler never reaps")
+
 
 async def test_load_owned_reservation_returns_the_principals_reservation() -> None:
     stored = StoredReservation(record=_record(), status=ReservationStatus.HELD)

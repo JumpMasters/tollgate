@@ -135,6 +135,17 @@ class ReservationRepository(Protocol):
         """
         ...
 
+    async def claim_next_expired(self, now: datetime) -> StoredReservation | None:
+        """Atomically claim and reap the oldest held reservation past its TTL (§5.4, §5.5).
+
+        Returns the reaped reservation (its ``record`` carries the provider / price-book version
+        the caller stamps on the ``reap`` ledger rows), or ``None`` when no held reservation has a
+        ``ttl_deadline`` before ``now``. Concurrency-safe under multiple reapers via
+        ``FOR UPDATE SKIP LOCKED``; the status flip is the exactly-once guard, so a mainline commit
+        that loses the race routes to the self-heal late commit (ADR 0029).
+        """
+        ...
+
 
 class IdempotencyRepository(Protocol):
     """Claim/replay store for command idempotency keys (§5.1)."""
@@ -150,6 +161,15 @@ class IdempotencyRepository(Protocol):
 
     async def store_response(self, key: str, status: str, response: Mapping[str, Any]) -> None:
         """Cache a command's response on its key row so a later duplicate replays it."""
+        ...
+
+    async def delete_expired(self, cutoff: datetime, limit: int) -> int:
+        """Delete up to ``limit`` keys created before ``cutoff``; return the count removed (§5.5).
+
+        Bounded so the reaper issues no single unbounded delete; the caller loops until a batch
+        returns fewer than ``limit``. ``cutoff`` fixed at the caller's tick start guarantees the
+        loop terminates.
+        """
         ...
 
 

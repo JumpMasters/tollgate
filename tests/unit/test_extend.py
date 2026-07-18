@@ -96,6 +96,9 @@ class _FakeReservations:
         self.requested.append((reservation_id, ttl_deadline))
         return self._advanced
 
+    async def claim_next_expired(self, now: datetime) -> StoredReservation | None:
+        raise AssertionError("this handler never reaps")
+
 
 class _NoIdempotency:
     async def claim(self, key: str, fingerprint: str) -> IdempotencyClaim:
@@ -103,6 +106,9 @@ class _NoIdempotency:
 
     async def store_response(self, key: str, status: str, response: Mapping[str, Any]) -> None:
         raise AssertionError("extend caches no response")
+
+    async def delete_expired(self, cutoff: datetime, limit: int) -> int:
+        raise AssertionError("this handler never reaps keys")
 
 
 class _StubCounterStore:

@@ -106,6 +106,9 @@ class _FakeIdempotency:
     async def store_response(self, key: str, status: str, response: Mapping[str, Any]) -> None:
         self.stored.append((key, status, dict(response)))
 
+    async def delete_expired(self, cutoff: datetime, limit: int) -> int:
+        raise AssertionError("this handler never reaps keys")
+
 
 class _FakeCounterStore:
     def __init__(self, apply_splits: Mapping[str, Reconciliation] | None = None) -> None:
@@ -199,6 +202,9 @@ class _StubReservations:
         self, reservation_id: ReservationId, ttl_deadline: datetime
     ) -> datetime | None:
         return None
+
+    async def claim_next_expired(self, now: datetime) -> StoredReservation | None:
+        raise AssertionError("this handler never reaps")
 
 
 class _StubReserveTx:
