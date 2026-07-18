@@ -198,7 +198,9 @@ reservation = Table(
         "input_bound_tokens >= 0 AND max_output_tokens >= 0",
         name="token_bounds_non_negative",
     ),
-    UniqueConstraint("idempotency_key"),
+    # Per-principal, matching the idempotency-key scope: it is the belt-and-suspenders guard
+    # behind the idempotency_key table, and the reserve path maps a violation to a 409 (#61, #71).
+    UniqueConstraint("principal_id", "idempotency_key"),
     Index("ix_reservation_status_ttl_deadline", "status", "ttl_deadline"),
 )
 
@@ -240,9 +242,13 @@ ledger = Table(
 idempotency_key = Table(
     "idempotency_key",
     metadata,
-    Column("key", Text, primary_key=True),
+    # Keys are scoped per acting principal, so two tenants that happen to choose the same key
+    # string never collide (a global key namespace is a cross-tenant denial-of-service surface).
+    Column("principal_id", Text, nullable=False),
+    Column("key", Text, nullable=False),
     Column("command_fingerprint", Text, nullable=False),
     Column("status", Text, nullable=True),
     Column("response", JSONB, nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    PrimaryKeyConstraint("principal_id", "key"),
 )

@@ -18,10 +18,12 @@ from datetime import datetime
 from typing import Any
 
 from sqlalchemy import func, insert, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from tollgate.adapters.postgres.schema import budget, reservation_line
 from tollgate.adapters.postgres.schema import reservation as reservation_table
+from tollgate.domain.errors import IdempotencyKeyReuse
 from tollgate.domain.ids import BudgetId, PrincipalId, ReservationId
 from tollgate.domain.records import (
     ReservationLineRecord,
@@ -31,6 +33,23 @@ from tollgate.domain.records import (
 )
 from tollgate.domain.reservations import ReservationStatus
 from tollgate.domain.scopes import BudgetNode, ScopeKind
+
+#: The per-principal idempotency guard on ``reservation`` (naming convention, see #61/#71).
+_IDEMPOTENCY_UNIQUE = "uq_reservation_principal_id_idempotency_key"
+
+
+def _violated_constraint(exc: IntegrityError) -> str | None:
+    """Best-effort name of the constraint an ``IntegrityError`` violated.
+
+    asyncpg carries the Postgres ``constraint_name`` on its own exception, which SQLAlchemy wraps;
+    check the wrapper and its cause so the reserve path can tell the idempotency guard apart from
+    any other integrity failure and only translate that one.
+    """
+    for candidate in (exc.orig, getattr(exc.orig, "__cause__", None)):
+        name = getattr(candidate, "constraint_name", None)
+        if name:
+            return str(name)
+    return None
 
 
 class PostgresReservationRepository:
@@ -61,22 +80,33 @@ class PostgresReservationRepository:
         reservation: ReservationRecord,
         lines: Sequence[ReservationLineRecord],
     ) -> None:
-        """Persist the held reservation and its lines (status/created_at DB-defaulted)."""
-        await self._conn.execute(
-            insert(reservation_table).values(
-                reservation_id=reservation.reservation_id,
-                idempotency_key=reservation.idempotency_key,
-                principal_id=reservation.principal_id,
-                provider=reservation.provider,
-                model=reservation.model,
-                price_book_version=reservation.price_book_version,
-                estimated_micro=reservation.estimated_micro,
-                input_bound_tokens=reservation.input_bound_tokens,
-                max_output_tokens=reservation.max_output_tokens,
-                ttl_deadline=reservation.ttl_deadline,
-                labels=dict(reservation.labels),
+        """Persist the held reservation and its lines (status/created_at DB-defaulted).
+
+        The reservation carries a per-principal UNIQUE on ``(principal_id, idempotency_key)``. If a
+        client reuses an idempotency key after the key reaper deleted its row, the claim upstream
+        reads FRESH but this insert collides with the surviving reservation; that violation is
+        mapped to :class:`IdempotencyKeyReuse` (409) rather than surfacing as an unmapped 500 (#61).
+        """
+        try:
+            await self._conn.execute(
+                insert(reservation_table).values(
+                    reservation_id=reservation.reservation_id,
+                    idempotency_key=reservation.idempotency_key,
+                    principal_id=reservation.principal_id,
+                    provider=reservation.provider,
+                    model=reservation.model,
+                    price_book_version=reservation.price_book_version,
+                    estimated_micro=reservation.estimated_micro,
+                    input_bound_tokens=reservation.input_bound_tokens,
+                    max_output_tokens=reservation.max_output_tokens,
+                    ttl_deadline=reservation.ttl_deadline,
+                    labels=dict(reservation.labels),
+                )
             )
-        )
+        except IntegrityError as exc:
+            if _violated_constraint(exc) == _IDEMPOTENCY_UNIQUE:
+                raise IdempotencyKeyReuse from exc
+            raise
         # A reservation always has >=1 line (a request governed by no budget is
         # denied, plan 07); the guard only skips an empty executemany.
         if lines:

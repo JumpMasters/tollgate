@@ -17,14 +17,16 @@ from tollgate.adapters.postgres.idempotency_repo import PostgresIdempotencyRepos
 from tollgate.domain.records import ClaimOutcome
 
 
-async def _claim_once(engine: AsyncEngine, key: str, fingerprint: str) -> ClaimOutcome:
+async def _claim_once(
+    engine: AsyncEngine, principal_id: str, key: str, fingerprint: str
+) -> ClaimOutcome:
     """Claim the key in its own transaction; only the FRESH winner stores a response."""
     async with engine.connect() as conn:
         txn = await conn.begin()
         repo = PostgresIdempotencyRepository(conn)
-        claim = await repo.claim(key, fingerprint)
+        claim = await repo.claim(principal_id, key, fingerprint)
         if claim.outcome is ClaimOutcome.FRESH:
-            await repo.store_response(key, "succeeded", {"reservation_id": "r1"})
+            await repo.store_response(principal_id, key, "succeeded", {"reservation_id": "r1"})
         await txn.commit()
         return claim.outcome
 
@@ -33,8 +35,8 @@ async def test_concurrent_duplicate_claims_dedup_to_one_effect(
     committing_engine: AsyncEngine,
 ) -> None:
     outcomes = await asyncio.gather(
-        _claim_once(committing_engine, "dup-key", "fp-1"),
-        _claim_once(committing_engine, "dup-key", "fp-1"),
+        _claim_once(committing_engine, "p1", "dup-key", "fp-1"),
+        _claim_once(committing_engine, "p1", "dup-key", "fp-1"),
     )
     # Exactly one claims FRESH; the other blocks on the unique index until the first commits,
     # then finds the conflict and REPLAYS the stored response.

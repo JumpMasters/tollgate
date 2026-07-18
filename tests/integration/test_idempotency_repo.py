@@ -15,7 +15,7 @@ _NOW = datetime(2026, 6, 23, 12, 0, tzinfo=UTC)
 
 async def test_claim_fresh_key_returns_fresh(db_conn: AsyncConnection) -> None:
     repo = PostgresIdempotencyRepository(db_conn)
-    claim = await repo.claim("k1", "fp-1")
+    claim = await repo.claim("p1", "k1", "fp-1")
     assert claim.outcome is ClaimOutcome.FRESH
     assert claim.response is None
 
@@ -24,19 +24,29 @@ async def test_claim_same_key_same_fingerprint_replays_stored_response(
     db_conn: AsyncConnection,
 ) -> None:
     repo = PostgresIdempotencyRepository(db_conn)
-    await repo.claim("k1", "fp-1")
-    await repo.store_response("k1", "succeeded", {"reservation_id": "r1"})
-    claim = await repo.claim("k1", "fp-1")
+    await repo.claim("p1", "k1", "fp-1")
+    await repo.store_response("p1", "k1", "succeeded", {"reservation_id": "r1"})
+    claim = await repo.claim("p1", "k1", "fp-1")
     assert claim.outcome is ClaimOutcome.REPLAY
     assert claim.response == {"reservation_id": "r1"}
 
 
 async def test_claim_same_key_different_fingerprint_is_mismatch(db_conn: AsyncConnection) -> None:
     repo = PostgresIdempotencyRepository(db_conn)
-    await repo.claim("k1", "fp-1")
-    claim = await repo.claim("k1", "fp-2")
+    await repo.claim("p1", "k1", "fp-1")
+    claim = await repo.claim("p1", "k1", "fp-2")
     assert claim.outcome is ClaimOutcome.MISMATCH
     assert claim.response is None
+
+
+async def test_same_key_under_different_principals_do_not_collide(db_conn: AsyncConnection) -> None:
+    # Keys are scoped per principal, so two tenants that choose the same key string each claim
+    # it FRESH — a global namespace would give the second a spurious MISMATCH (#71).
+    repo = PostgresIdempotencyRepository(db_conn)
+    first = await repo.claim("p1", "shared-key", "fp-p1")
+    second = await repo.claim("p2", "shared-key", "fp-p2")
+    assert first.outcome is ClaimOutcome.FRESH
+    assert second.outcome is ClaimOutcome.FRESH
 
 
 async def test_duplicate_claim_before_response_replays_null(db_conn: AsyncConnection) -> None:
@@ -45,15 +55,22 @@ async def test_duplicate_claim_before_response_replays_null(db_conn: AsyncConnec
     # the unique index until the first commits — is exercised in plan 07; here both claims run
     # on one connection.)
     repo = PostgresIdempotencyRepository(db_conn)
-    await repo.claim("k1", "fp-1")
-    claim = await repo.claim("k1", "fp-1")
+    await repo.claim("p1", "k1", "fp-1")
+    claim = await repo.claim("p1", "k1", "fp-1")
     assert claim.outcome is ClaimOutcome.REPLAY
     assert claim.response is None
 
 
-async def _insert_key(db_conn: AsyncConnection, *, key: str, created_at: datetime) -> None:
+async def _insert_key(
+    db_conn: AsyncConnection, *, key: str, created_at: datetime, principal_id: str = "p1"
+) -> None:
     await db_conn.execute(
-        idempotency_key.insert().values(key=key, command_fingerprint="fp", created_at=created_at)
+        idempotency_key.insert().values(
+            principal_id=principal_id,
+            key=key,
+            command_fingerprint="fp",
+            created_at=created_at,
+        )
     )
 
 

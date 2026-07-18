@@ -101,10 +101,12 @@ class _FakeReservations:
 
 
 class _NoIdempotency:
-    async def claim(self, key: str, fingerprint: str) -> IdempotencyClaim:
+    async def claim(self, principal_id: str, key: str, fingerprint: str) -> IdempotencyClaim:
         raise AssertionError("extend is naturally idempotent and needs no key (§4)")
 
-    async def store_response(self, key: str, status: str, response: Mapping[str, Any]) -> None:
+    async def store_response(
+        self, principal_id: str, key: str, status: str, response: Mapping[str, Any]
+    ) -> None:
         raise AssertionError("extend caches no response")
 
     async def delete_expired(self, cutoff: datetime, limit: int) -> int:
