@@ -12,6 +12,7 @@ ticks are pure of scheduling — the polling loop lives in ``workers/runner.py``
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import timedelta
 
 from tollgate.application.handlers.common import ordered_lines
 from tollgate.application.ports import Clock, IdGenerator, UnitOfWork
@@ -71,3 +72,28 @@ class ReservationReaperHandler:
                 await tx.ledger.append(entries)
             reaped += 1
         return ReapReport(reaped=reaped)
+
+
+class IdempotencyReaperHandler:
+    """Batch-deletes idempotency keys past their TTL, one bounded transaction each (§5.5)."""
+
+    def __init__(self, *, uow: UnitOfWork, clock: Clock, ttl_hours: int, batch_size: int) -> None:
+        self._uow = uow
+        self._clock = clock
+        self._ttl_hours = ttl_hours
+        self._batch_size = batch_size
+
+    async def run_once(self) -> int:
+        """Delete keys older than ``ttl_hours`` in bounded batches; return the count removed.
+
+        ``cutoff`` is fixed at tick start, so only finitely many rows qualify and the loop always
+        terminates — it stops as soon as a batch comes back shorter than ``batch_size``.
+        """
+        cutoff = self._clock.now() - timedelta(hours=self._ttl_hours)
+        deleted = 0
+        while True:
+            async with self._uow.begin() as tx:
+                removed = await tx.idempotency.delete_expired(cutoff, self._batch_size)
+            deleted += removed
+            if removed < self._batch_size:
+                return deleted

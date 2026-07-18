@@ -4,10 +4,14 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator, Mapping, Sequence
 from contextlib import asynccontextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from tollgate.application.handlers.reap import ReapReport, ReservationReaperHandler
+from tollgate.application.handlers.reap import (
+    IdempotencyReaperHandler,
+    ReapReport,
+    ReservationReaperHandler,
+)
 from tollgate.domain.credentials import Principal
 from tollgate.domain.ids import BudgetId, LedgerEntryId, PrincipalId, ProjectId, ReservationId
 from tollgate.domain.pricing import ModelPrice, PricedModel, Reconciliation
@@ -250,3 +254,122 @@ async def test_reaper_with_nothing_expired_does_nothing() -> None:
     report = await handler.run_once()
     assert report == ReapReport(reaped=0)
     assert ctx.ledger.appended == []
+
+
+class _FakeIdempotency:
+    def __init__(self, removals: list[int]) -> None:
+        self._removals = list(removals)
+        self.calls: list[tuple[datetime, int]] = []
+
+    async def claim(self, key: str, fingerprint: str) -> IdempotencyClaim:
+        raise AssertionError("the idempotency reaper never claims a key")
+
+    async def store_response(self, key: str, status: str, response: Mapping[str, Any]) -> None:
+        raise AssertionError("the idempotency reaper never stores a response")
+
+    async def delete_expired(self, cutoff: datetime, limit: int) -> int:
+        self.calls.append((cutoff, limit))
+        return self._removals.pop(0) if self._removals else 0
+
+
+class _StubReservationsUntouched:
+    async def insert(
+        self, reservation: ReservationRecord, lines: Sequence[ReservationLineRecord]
+    ) -> None:
+        raise AssertionError("the idempotency reaper never touches reservations")
+
+    async def claim_terminal(
+        self, reservation_id: ReservationId, next_status: ReservationStatus
+    ) -> bool:
+        raise AssertionError("the idempotency reaper never touches reservations")
+
+    async def find(self, reservation_id: ReservationId) -> StoredReservation | None:
+        raise AssertionError("the idempotency reaper never touches reservations")
+
+    async def find_lines(self, reservation_id: ReservationId) -> Sequence[ReservationLineView]:
+        raise AssertionError("the idempotency reaper never touches reservations")
+
+    async def claim_late_commit(self, reservation_id: ReservationId) -> bool:
+        raise AssertionError("the idempotency reaper never touches reservations")
+
+    async def advance_ttl(
+        self, reservation_id: ReservationId, ttl_deadline: datetime
+    ) -> datetime | None:
+        raise AssertionError("the idempotency reaper never touches reservations")
+
+    async def claim_next_expired(self, now: datetime) -> StoredReservation | None:
+        raise AssertionError("the idempotency reaper never touches reservations")
+
+
+class _StubLedgerUntouched:
+    async def append(self, entries: Sequence[LedgerEntry]) -> None:
+        raise AssertionError("the idempotency reaper never appends ledger rows")
+
+
+class _StubCounterStoreUntouched:
+    async def ensure_period(self, budget_id: BudgetId, period_start: datetime) -> None:
+        raise AssertionError("the idempotency reaper never touches the counter store")
+
+    async def reserve(self, budget_id: BudgetId, period_start: datetime, amount_micro: int) -> bool:
+        raise AssertionError("the idempotency reaper never touches the counter store")
+
+    async def commit(
+        self,
+        budget_id: BudgetId,
+        period_start: datetime,
+        reserved_micro: int,
+        actual_micro: int,
+    ) -> None:
+        raise AssertionError("the idempotency reaper never touches the counter store")
+
+    async def release(self, budget_id: BudgetId, period_start: datetime, amount_micro: int) -> None:
+        raise AssertionError("the idempotency reaper never touches the counter store")
+
+    async def apply_spend(
+        self, budget_id: BudgetId, period_start: datetime, amount_micro: int
+    ) -> Reconciliation:
+        raise AssertionError("the idempotency reaper never touches the counter store")
+
+
+class _IdemCtx:
+    """A ``CommandContext`` stubbed everywhere except ``idempotency`` (§5.5)."""
+
+    def __init__(self, idempotency: _FakeIdempotency) -> None:
+        self.prices = _StubPrices()
+        self.budgets = _StubBudgets()
+        self.idempotency = idempotency
+        self.reservations = _StubReservationsUntouched()
+        self.ledger = _StubLedgerUntouched()
+        self.reserve_tx = _StubReserveTx()
+        self.counter_store = _StubCounterStoreUntouched()
+
+
+class _IdemUow:
+    def __init__(self, ctx: _IdemCtx) -> None:
+        self._ctx = ctx
+        self.begins = 0
+
+    @asynccontextmanager
+    async def begin(self) -> AsyncIterator[_IdemCtx]:
+        self.begins += 1
+        yield self._ctx
+
+
+async def test_idempotency_reaper_loops_batches_until_short_and_sums() -> None:
+    idem = _FakeIdempotency([500, 500, 137])  # two full batches then a short one
+    uow = _IdemUow(_IdemCtx(idem))
+    handler = IdempotencyReaperHandler(uow=uow, clock=_ClockAt(_NOW), ttl_hours=24, batch_size=500)
+    deleted = await handler.run_once()
+    assert deleted == 1137
+    assert uow.begins == 3  # one bounded transaction per batch
+    # cutoff is now - 24h, applied to every batch
+    cutoff = _NOW - timedelta(hours=24)
+    assert idem.calls == [(cutoff, 500), (cutoff, 500), (cutoff, 500)]
+
+
+async def test_idempotency_reaper_with_nothing_expired_stops_after_one_short_batch() -> None:
+    idem = _FakeIdempotency([0])
+    uow = _IdemUow(_IdemCtx(idem))
+    handler = IdempotencyReaperHandler(uow=uow, clock=_ClockAt(_NOW), ttl_hours=24, batch_size=500)
+    assert await handler.run_once() == 0
+    assert uow.begins == 1
