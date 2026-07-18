@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from enum import StrEnum
 
 from tollgate.domain.ids import BudgetId
 from tollgate.domain.invariants import Balance, remaining
@@ -79,3 +80,54 @@ def crossed_thresholds(state: BudgetState) -> tuple[int, ...]:
         return ()
     spent = spent_micro(state)
     return tuple(t for t in sorted(state.alert_thresholds_pct) if spent * 100 >= t * limit)
+
+
+class GroupByKind(StrEnum):
+    """The dimension a spend rollup groups by (section 2)."""
+
+    PROVIDER = "provider"
+    MODEL = "model"
+    LABEL = "label"
+
+
+@dataclass(frozen=True, slots=True)
+class GroupBy:
+    """A parsed group-by dimension: ``provider``, ``model``, or a ``label:<key>`` (section 2)."""
+
+    kind: GroupByKind
+    label_key: str | None = None
+
+
+def parse_group_by(raw: str) -> GroupBy | None:
+    """Parse a ``group_by`` token into a :class:`GroupBy`, or ``None`` if malformed.
+
+    ``provider`` and ``model`` are first-class ledger/reservation dimensions; ``label:<key>``
+    groups by an arbitrary key in the reservation's labels (so ``env`` and ``cost-center`` are just
+    ``label:env`` / ``label:cost-center``). A non-empty key after ``label:`` is required.
+    """
+    if raw in (GroupByKind.PROVIDER.value, GroupByKind.MODEL.value):
+        return GroupBy(kind=GroupByKind(raw))
+    prefix, sep, key = raw.partition(":")
+    if prefix == GroupByKind.LABEL.value and sep and key:
+        return GroupBy(kind=GroupByKind.LABEL, label_key=key)
+    return None
+
+
+@dataclass(frozen=True, slots=True)
+class SpendGroup:
+    """One group of a spend rollup: the group's value and its realized micro-USD spend (section 2).
+
+    ``group`` is ``None`` for spend that cannot be attributed on the requested dimension -- a
+    grace-backfill row (no reservation) or a reservation missing the requested label key.
+    """
+
+    group: str | None
+    spend_micro: int
+
+
+@dataclass(frozen=True, slots=True)
+class SpendRollup:
+    """A scope node's realized spend for one period, grouped by a dimension (section 2)."""
+
+    period_start: datetime
+    groups: tuple[SpendGroup, ...]

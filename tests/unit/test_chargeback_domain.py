@@ -7,7 +7,12 @@ from datetime import UTC, datetime
 from tollgate.domain.chargeback import (
     BudgetState,
     BudgetStatesView,
+    GroupBy,
+    GroupByKind,
+    SpendGroup,
+    SpendRollup,
     crossed_thresholds,
+    parse_group_by,
     remaining_micro,
     spent_micro,
     utilization_pct,
@@ -81,3 +86,37 @@ def test_scope_ref_is_a_frozen_kind_and_id() -> None:
     ref = ScopeRef(scope_kind=ScopeKind.TEAM, scope_id="t1")
     assert ref.scope_kind is ScopeKind.TEAM
     assert ref.scope_id == "t1"
+
+
+def test_parse_group_by_provider_and_model() -> None:
+    assert parse_group_by("provider") == GroupBy(kind=GroupByKind.PROVIDER)
+    assert parse_group_by("model") == GroupBy(kind=GroupByKind.MODEL)
+
+
+def test_parse_group_by_label_key() -> None:
+    assert parse_group_by("label:env") == GroupBy(kind=GroupByKind.LABEL, label_key="env")
+    assert parse_group_by("label:cost-center") == GroupBy(
+        kind=GroupByKind.LABEL, label_key="cost-center"
+    )
+
+
+def test_parse_group_by_rejects_malformed() -> None:
+    for bad in ("", "spend", "label", "label:", ":env", "provider:x", "PROVIDER"):
+        assert parse_group_by(bad) is None
+
+
+def test_spend_group_allows_unattributed_none() -> None:
+    group = SpendGroup(group=None, spend_micro=200)
+    assert group.group is None
+    assert group.spend_micro == 200
+
+
+def test_spend_rollup_carries_period_and_groups() -> None:
+    from datetime import UTC, datetime
+
+    rollup = SpendRollup(
+        period_start=datetime(2026, 7, 1, tzinfo=UTC),
+        groups=(SpendGroup(group="anthropic", spend_micro=500),),
+    )
+    assert rollup.period_start == datetime(2026, 7, 1, tzinfo=UTC)
+    assert rollup.groups[0].group == "anthropic"
