@@ -8,6 +8,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
+from tollgate.domain.errors import AmountOutOfRange
 from tollgate.domain.pricing import (
     ModelPrice,
     PricedModel,
@@ -80,6 +81,13 @@ def test_estimate_rejects_negative_tokens() -> None:
         estimate_micro(PRICE, input_bound_tokens=10, max_output_tokens=-1)
 
 
+def test_estimate_out_of_range_raises_typed_error() -> None:
+    # A worst-case estimate that overflows the int8 balance columns surfaces as a
+    # typed AmountOutOfRange, not a bare Decimal/driver overflow (#66).
+    with pytest.raises(AmountOutOfRange):
+        estimate_micro(PRICE, input_bound_tokens=2**63, max_output_tokens=0)
+
+
 def test_actual_prices_all_input_at_full_rate_by_default() -> None:
     # 2.5 * 1000 + 10 * 200 = 2500 + 2000
     assert actual_micro(PRICE, input_tokens=1000, output_tokens=200) == 4500
@@ -109,6 +117,12 @@ def test_actual_rejects_negative_tokens() -> None:
         actual_micro(PRICE, input_tokens=0, output_tokens=-1)
     with pytest.raises(ValueError, match="non-negative"):
         actual_micro(PRICE, input_tokens=0, output_tokens=0, cached_input_tokens=-1)
+
+
+def test_actual_out_of_range_raises_typed_error() -> None:
+    # The same guard covers the commit/grace path through actual_micro (#66).
+    with pytest.raises(AmountOutOfRange):
+        actual_micro(PRICE, input_tokens=2**63, output_tokens=0)
 
 
 def test_reconcile_under_reservation_has_no_overage() -> None:

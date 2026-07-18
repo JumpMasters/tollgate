@@ -10,8 +10,28 @@ weakening enforcement. Response models mirror the domain result types;
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Annotated, Final
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+
+#: Generous but finite ceiling on any single token-count field. Comfortably above
+#: any real request, yet small enough that a worst-case estimate stays within the
+#: signed int8 balance/ledger columns for any realistic price -- so oversized wire
+#: input becomes a clean 422 instead of an overflow 500 (#66).
+MAX_TOKENS: Final = 1_000_000_000
+
+#: Upper bound on identifier-like strings (provider, model, reservation/project ids,
+#: and the Idempotency-Key header). Each is written verbatim to a row, so the cap
+#: bounds the per-request storage and memory cost (#68).
+MAX_STR_LEN: Final = 256
+
+#: Bounds on chargeback labels: the number of entries, and each key/value length (#68).
+MAX_LABELS: Final = 64
+MAX_LABEL_KEY_LEN: Final = 128
+MAX_LABEL_VALUE_LEN: Final = 256
+
+_LabelKey = Annotated[str, StringConstraints(max_length=MAX_LABEL_KEY_LEN)]
+_LabelValue = Annotated[str, StringConstraints(max_length=MAX_LABEL_VALUE_LEN)]
 
 
 class _RequestModel(BaseModel):
@@ -23,48 +43,55 @@ class _RequestModel(BaseModel):
 class UsageBody(_RequestModel):
     """Provider-reported token usage (section 4: never caller-asserted amounts)."""
 
-    input_tokens: int = Field(ge=0)
-    output_tokens: int = Field(ge=0)
-    cached_input_tokens: int = Field(default=0, ge=0)
+    input_tokens: int = Field(ge=0, le=MAX_TOKENS)
+    output_tokens: int = Field(ge=0, le=MAX_TOKENS)
+    cached_input_tokens: int = Field(default=0, ge=0, le=MAX_TOKENS)
+
+    @model_validator(mode="after")
+    def _cached_within_input(self) -> UsageBody:
+        """The cached subset can never exceed the input it is drawn from (section 4)."""
+        if self.cached_input_tokens > self.input_tokens:
+            raise ValueError("cached_input_tokens cannot exceed input_tokens")
+        return self
 
 
 class ReserveRequest(_RequestModel):
     """Body of ``POST /v1/reserve``."""
 
-    provider: str = Field(min_length=1)
-    model: str = Field(min_length=1)
-    input_bound_tokens: int = Field(ge=0)
-    max_output_tokens: int = Field(ge=0)
-    labels: dict[str, str] = Field(default_factory=dict)
-    project_id: str | None = None
+    provider: str = Field(min_length=1, max_length=MAX_STR_LEN)
+    model: str = Field(min_length=1, max_length=MAX_STR_LEN)
+    input_bound_tokens: int = Field(ge=0, le=MAX_TOKENS)
+    max_output_tokens: int = Field(ge=0, le=MAX_TOKENS)
+    labels: dict[_LabelKey, _LabelValue] = Field(default_factory=dict, max_length=MAX_LABELS)
+    project_id: str | None = Field(default=None, min_length=1, max_length=MAX_STR_LEN)
 
 
 class CommitRequest(_RequestModel):
     """Body of ``POST /v1/commit``."""
 
-    reservation_id: str = Field(min_length=1)
+    reservation_id: str = Field(min_length=1, max_length=MAX_STR_LEN)
     usage: UsageBody
 
 
 class CancelRequest(_RequestModel):
     """Body of ``POST /v1/cancel``."""
 
-    reservation_id: str = Field(min_length=1)
+    reservation_id: str = Field(min_length=1, max_length=MAX_STR_LEN)
 
 
 class ExtendRequest(_RequestModel):
     """Body of ``POST /v1/extend``."""
 
-    reservation_id: str = Field(min_length=1)
+    reservation_id: str = Field(min_length=1, max_length=MAX_STR_LEN)
 
 
 class GraceBackfillRequest(_RequestModel):
     """Body of ``POST /v1/grace-backfill``."""
 
-    provider: str = Field(min_length=1)
-    model: str = Field(min_length=1)
+    provider: str = Field(min_length=1, max_length=MAX_STR_LEN)
+    model: str = Field(min_length=1, max_length=MAX_STR_LEN)
     usage: UsageBody
-    project_id: str | None = None
+    project_id: str | None = Field(default=None, min_length=1, max_length=MAX_STR_LEN)
 
 
 class ReserveResponse(BaseModel):

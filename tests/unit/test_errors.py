@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from tollgate.domain.errors import (
+    AmountOutOfRange,
     AuthenticationFailed,
     BudgetNotFound,
     ConflictingBudgetScope,
@@ -27,6 +28,7 @@ def test_every_error_descends_from_base() -> None:
         ConflictingBudgetScope,
         AuthenticationFailed,
         ScopeNotAuthorized,
+        AmountOutOfRange,
     ):
         assert issubclass(exc, TollgateError)
 

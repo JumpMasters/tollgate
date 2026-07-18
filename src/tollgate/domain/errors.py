@@ -57,6 +57,17 @@ class UnknownModel(TollgateError):
         self.model = model
 
 
+class AmountOutOfRange(TollgateError):
+    """A computed micro-USD amount exceeds the representable ledger range.
+
+    Balances and ledger amounts are stored as ``BigInteger`` (signed int8), so a
+    worst-case estimate or reconciled actual above ``2**63 - 1`` cannot be persisted.
+    Declared token bounds are capped at the wire, so this is unreachable from a sane
+    price book; the domain still refuses the amount with a typed error rather than
+    letting a bare ``decimal.InvalidOperation`` or driver overflow escape.
+    """
+
+
 class IdempotencyKeyReuse(TollgateError):
     """An idempotency key was reused with a different command fingerprint."""
 

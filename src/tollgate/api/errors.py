@@ -16,6 +16,7 @@ from fastapi.responses import JSONResponse
 
 from tollgate.api.schemas import ErrorBody, ErrorEnvelope
 from tollgate.domain.errors import (
+    AmountOutOfRange,
     AuthenticationFailed,
     BudgetNotFound,
     ConflictingBudgetScope,
@@ -42,6 +43,7 @@ _MAPPING: Final[dict[type[TollgateError], tuple[int, str, str]]] = {
     ),
     ReservationNotHeld: (409, "reservation_not_held", "reservation is not held"),
     UnknownModel: (422, "unknown_model", "unknown (provider, model) pair"),
+    AmountOutOfRange: (422, "amount_out_of_range", "amount out of representable range"),
     ConflictingBudgetScope: (
         500,
         "conflicting_budget_scope",
