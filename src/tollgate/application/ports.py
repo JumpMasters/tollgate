@@ -12,7 +12,7 @@ from contextlib import AbstractAsyncContextManager
 from datetime import datetime
 from typing import Any, Protocol
 
-from tollgate.domain.chargeback import BudgetState
+from tollgate.domain.chargeback import BudgetState, GroupBy, SpendGroup
 from tollgate.domain.credentials import Credential, Principal
 from tollgate.domain.ids import (
     BudgetId,
@@ -321,6 +321,22 @@ class ChargebackRepository(Protocol):
         The map is what :func:`tollgate.domain.credentials.authorizes` consumes to check that a
         filter node is at or below the credential (section 5.0) -- built from trusted structure
         rows, never from request-asserted ids.
+        """
+        ...
+
+    async def spend_rollup(
+        self,
+        scope_kind: ScopeKind,
+        scope_id: str,
+        period_start: datetime,
+        group_by: GroupBy,
+    ) -> Sequence[SpendGroup]:
+        """Realized spend (committed + overage) for one node's budget, grouped by ``group_by``.
+
+        Sums only the node's own budget ledger rows for ``period_start`` -- never a subtree union,
+        which would multiply-count spend shared across ancestor budgets. ``provider`` is read from
+        the ledger; ``model`` / ``label:<key>`` from a LEFT JOIN to the reservation, so grace rows
+        (no reservation) fall into the ``None`` group. Groups with zero realized spend are omitted.
         """
         ...
 

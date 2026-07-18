@@ -10,7 +10,7 @@ import pytest
 
 from tollgate.application.auth import AuthContext
 from tollgate.application.handlers.read import ChargebackHandler
-from tollgate.domain.chargeback import BudgetState
+from tollgate.domain.chargeback import BudgetState, GroupBy, GroupByKind, SpendGroup
 from tollgate.domain.credentials import Credential, CredentialStatus, Principal
 from tollgate.domain.errors import ScopeNotAuthorized
 from tollgate.domain.ids import (
@@ -34,10 +34,13 @@ class _FakeRepo:
         *,
         ancestry: Mapping[tuple[ScopeKind, str], Mapping[ScopeKind, str]],
         states: Sequence[BudgetState],
+        groups: Sequence[SpendGroup] = (),
     ) -> None:
         self._ancestry = ancestry
         self._states = states
+        self._groups = groups
         self.subtree_calls: list[tuple[ScopeKind, str, datetime]] = []
+        self.spend_calls: list[tuple[ScopeKind, str, datetime, GroupBy]] = []
 
     async def subtree_states(
         self, scope_kind: ScopeKind, scope_id: str, period_start: datetime
@@ -49,6 +52,16 @@ class _FakeRepo:
         self, scope_kind: ScopeKind, scope_id: str
     ) -> Mapping[ScopeKind, str] | None:
         return self._ancestry.get((scope_kind, scope_id))
+
+    async def spend_rollup(
+        self,
+        scope_kind: ScopeKind,
+        scope_id: str,
+        period_start: datetime,
+        group_by: GroupBy,
+    ) -> Sequence[SpendGroup]:
+        self.spend_calls.append((scope_kind, scope_id, period_start, group_by))
+        return self._groups
 
 
 class _FakeReader:
@@ -131,3 +144,58 @@ async def test_unknown_filter_node_is_refused_identically() -> None:
             _auth(ScopeKind.ORG, "o1"), scope=ScopeRef(ScopeKind.TEAM, "ghost")
         )
     assert repo.subtree_calls == []
+
+
+async def test_spend_rollup_defaults_to_credential_scope_and_current_period() -> None:
+    repo = _FakeRepo(ancestry={}, states=[], groups=[SpendGroup("anthropic", 500)])
+    view = await _handler(repo).spend_rollup(
+        _auth(ScopeKind.USER, "u1"), group_by=GroupBy(GroupByKind.PROVIDER)
+    )
+    assert repo.spend_calls == [(ScopeKind.USER, "u1", _PERIOD, GroupBy(GroupByKind.PROVIDER))]
+    assert view.period_start == _PERIOD
+    assert view.groups == (SpendGroup("anthropic", 500),)
+
+
+async def test_spend_rollup_uses_an_explicit_period_snapped_to_month() -> None:
+    repo = _FakeRepo(ancestry={}, states=[], groups=[])
+    await _handler(repo).spend_rollup(
+        _auth(ScopeKind.USER, "u1"),
+        group_by=GroupBy(GroupByKind.MODEL),
+        period_start=datetime(2026, 5, 17, 9, 30, tzinfo=UTC),
+    )
+    assert repo.spend_calls[0][2] == datetime(2026, 5, 1, tzinfo=UTC)  # snapped to month start
+
+
+async def test_spend_rollup_coerces_a_naive_period_to_utc() -> None:
+    repo = _FakeRepo(ancestry={}, states=[], groups=[])
+    await _handler(repo).spend_rollup(
+        _auth(ScopeKind.USER, "u1"),
+        group_by=GroupBy(GroupByKind.MODEL),
+        period_start=datetime(2026, 5, 17, 9, 30),  # tz-naive
+    )
+    assert repo.spend_calls[0][2] == datetime(2026, 5, 1, tzinfo=UTC)
+
+
+async def test_spend_rollup_authorized_filter_reroots() -> None:
+    repo = _FakeRepo(
+        ancestry={(ScopeKind.TEAM, "t1"): {ScopeKind.ORG: "o1", ScopeKind.TEAM: "t1"}},
+        states=[],
+        groups=[],
+    )
+    await _handler(repo).spend_rollup(
+        _auth(ScopeKind.ORG, "o1"),
+        group_by=GroupBy(GroupByKind.PROVIDER),
+        scope=ScopeRef(ScopeKind.TEAM, "t1"),
+    )
+    assert repo.spend_calls[0][0:2] == (ScopeKind.TEAM, "t1")
+
+
+async def test_spend_rollup_filter_outside_scope_is_refused() -> None:
+    repo = _FakeRepo(ancestry={(ScopeKind.ORG, "o1"): {ScopeKind.ORG: "o1"}}, states=[], groups=[])
+    with pytest.raises(ScopeNotAuthorized):
+        await _handler(repo).spend_rollup(
+            _auth(ScopeKind.USER, "u1"),
+            group_by=GroupBy(GroupByKind.PROVIDER),
+            scope=ScopeRef(ScopeKind.ORG, "o1"),
+        )
+    assert repo.spend_calls == []

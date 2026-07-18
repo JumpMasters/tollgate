@@ -12,9 +12,11 @@ connection, no transaction envelope, no idempotency.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from tollgate.application.auth import AuthContext
-from tollgate.application.ports import ChargebackReader, Clock
-from tollgate.domain.chargeback import BudgetStatesView
+from tollgate.application.ports import ChargebackReader, ChargebackRepository, Clock
+from tollgate.domain.chargeback import BudgetStatesView, GroupBy, SpendRollup
 from tollgate.domain.credentials import authorizes
 from tollgate.domain.errors import ScopeNotAuthorized
 from tollgate.domain.periods import calendar_month_start
@@ -28,19 +30,48 @@ class ChargebackHandler:
         self._reader = reader
         self._clock = clock
 
+    async def _resolve_root(
+        self, repo: ChargebackRepository, auth: AuthContext, scope: ScopeRef | None
+    ) -> tuple[ScopeKind, str]:
+        """Resolve the subtree/rollup root, refusing a filter node outside the credential's scope.
+
+        No filter -> the credential's own node (self-authorized). A filter must be at or below the
+        credential (checked against server-derived ancestry); an unknown node and a foreign node are
+        both refused identically as :class:`ScopeNotAuthorized` -- no existence leak (section 5.0).
+        """
+        if scope is None:
+            return auth.credential.scope_kind, auth.credential.scope_id
+        ancestry = await repo.resolve_scope_ancestry(scope.scope_kind, scope.scope_id)
+        if ancestry is None or not authorizes(auth.credential, ancestry):
+            raise ScopeNotAuthorized(f"{scope.scope_kind.value}:{scope.scope_id}")
+        return scope.scope_kind, scope.scope_id
+
     async def budget_states(
         self, auth: AuthContext, *, scope: ScopeRef | None = None
     ) -> BudgetStatesView:
-        """Return budget states at or below the credential's scope, or re-rooted at ``scope``."""
+        """Return budget states at or below the credential's scope (optionally re-rooted at
+        ``scope``).
+        """
         period_start = calendar_month_start(self._clock.now())
         async with self._reader.begin() as repo:
-            if scope is None:
-                root_kind: ScopeKind = auth.credential.scope_kind
-                root_id: str = auth.credential.scope_id
-            else:
-                ancestry = await repo.resolve_scope_ancestry(scope.scope_kind, scope.scope_id)
-                if ancestry is None or not authorizes(auth.credential, ancestry):
-                    raise ScopeNotAuthorized(f"{scope.scope_kind.value}:{scope.scope_id}")
-                root_kind, root_id = scope.scope_kind, scope.scope_id
+            root_kind, root_id = await self._resolve_root(repo, auth, scope)
             states = await repo.subtree_states(root_kind, root_id, period_start)
         return BudgetStatesView(period_start=period_start, states=tuple(states))
+
+    async def spend_rollup(
+        self,
+        auth: AuthContext,
+        *,
+        group_by: GroupBy,
+        scope: ScopeRef | None = None,
+        period_start: datetime | None = None,
+    ) -> SpendRollup:
+        """Return a node's realized spend for a period, grouped by ``group_by`` (section 2, 5.0)."""
+        raw = self._clock.now() if period_start is None else period_start
+        if raw.tzinfo is None:
+            raw = raw.replace(tzinfo=UTC)
+        period = calendar_month_start(raw)
+        async with self._reader.begin() as repo:
+            root_kind, root_id = await self._resolve_root(repo, auth, scope)
+            groups = await repo.spend_rollup(root_kind, root_id, period, group_by)
+        return SpendRollup(period_start=period, groups=tuple(groups))
