@@ -5,10 +5,10 @@ from __future__ import annotations
 import pytest
 from fastapi import HTTPException
 
-from tollgate.api.routes.chargeback import _node_response, _parse_scope
+from tollgate.api.routes.chargeback import _node_response, _parse_scope, _spend_response
 from tollgate.app import build_app
 from tollgate.config.settings import Settings
-from tollgate.domain.chargeback import BudgetState
+from tollgate.domain.chargeback import BudgetState, SpendGroup, SpendRollup
 from tollgate.domain.ids import BudgetId
 from tollgate.domain.invariants import Balance
 from tollgate.domain.scopes import ScopeKind, ScopeRef
@@ -63,3 +63,16 @@ async def test_build_app_wires_the_chargeback_route_and_handler() -> None:
         assert "/v1/budgets" in app.openapi()["paths"]
     finally:
         await app.state.engine.dispose()
+
+
+def test_spend_response_maps_groups_and_echoes_dimension() -> None:
+    from datetime import UTC, datetime
+
+    rollup = SpendRollup(
+        period_start=datetime(2026, 7, 1, tzinfo=UTC),
+        groups=(SpendGroup("anthropic", 500), SpendGroup(None, 100)),
+    )
+    response = _spend_response(rollup, "provider")
+    assert response.group_by == "provider"
+    assert response.period_start == datetime(2026, 7, 1, tzinfo=UTC)
+    assert [(g.group, g.spend_micro) for g in response.groups] == [("anthropic", 500), (None, 100)]

@@ -133,6 +133,21 @@ class BudgetStatesResponse(BaseModel):
     budgets: list[BudgetStateResponse]
 
 
+class SpendGroupResponse(BaseModel):
+    """One group of a spend rollup (section 2); ``group`` is null for unattributed spend."""
+
+    group: str | None
+    spend_micro: int
+
+
+class SpendRollupResponse(BaseModel):
+    """Body of ``GET /v1/spend``: realized spend for a node, grouped by a dimension (section 2)."""
+
+    period_start: datetime
+    group_by: str
+    groups: list[SpendGroupResponse]
+
+
 class ErrorBody(BaseModel):
     """The ``error`` object inside every error envelope (ADR 0031)."""
 

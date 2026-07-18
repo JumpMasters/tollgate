@@ -8,15 +8,25 @@ propagate to the handler installed by ``tollgate.api.errors``; a malformed ``sco
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from fastapi import APIRouter, HTTPException, Request
 
 from tollgate.api.dependencies import RequestAuth
-from tollgate.api.schemas import BudgetAlertState, BudgetStateResponse, BudgetStatesResponse
+from tollgate.api.schemas import (
+    BudgetAlertState,
+    BudgetStateResponse,
+    BudgetStatesResponse,
+    SpendGroupResponse,
+    SpendRollupResponse,
+)
 from tollgate.application.handlers.read import ChargebackHandler
 from tollgate.domain.chargeback import (
     BudgetState,
     BudgetStatesView,
+    SpendRollup,
     crossed_thresholds,
+    parse_group_by,
     remaining_micro,
     utilization_pct,
 )
@@ -72,3 +82,35 @@ async def budgets(
         period_start=view.period_start,
         budgets=[_node_response(state) for state in view.states],
     )
+
+
+def _spend_response(rollup: SpendRollup, group_by: str) -> SpendRollupResponse:
+    return SpendRollupResponse(
+        period_start=rollup.period_start,
+        group_by=group_by,
+        groups=[
+            SpendGroupResponse(group=g.group, spend_micro=g.spend_micro) for g in rollup.groups
+        ],
+    )
+
+
+@router.get("/spend")
+async def spend(
+    request: Request,
+    auth: RequestAuth,
+    group_by: str,
+    scope: str | None = None,
+    period_start: datetime | None = None,
+) -> SpendRollupResponse:
+    """Realized spend for a scope node, grouped by a dimension, for one period (section 2, 5.0)."""
+    parsed = parse_group_by(group_by)
+    if parsed is None:
+        raise HTTPException(
+            status_code=422,
+            detail="group_by must be 'provider', 'model', or 'label:<key>'",
+        )
+    handler: ChargebackHandler = request.app.state.chargeback_handler
+    rollup = await handler.spend_rollup(
+        auth, group_by=parsed, scope=_parse_scope(scope), period_start=period_start
+    )
+    return _spend_response(rollup, group_by)
