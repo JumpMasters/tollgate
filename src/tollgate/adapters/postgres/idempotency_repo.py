@@ -68,10 +68,16 @@ class PostgresIdempotencyRepository:
         comes back short. Keys are addressed via a primary-key sub-select so the ``LIMIT`` applies
         to the delete set (Postgres has no ``DELETE … LIMIT``). Safe because
         ``reservation.idempotency_key`` is UNIQUE, not a foreign key: an aged key never orphans a
-        reservation.
+        reservation. The sub-select orders by key and takes its locks with ``FOR UPDATE SKIP
+        LOCKED``, so concurrent reapers pick disjoint, deterministically-ordered batches and make
+        progress without deadlocking — mirroring ``claim_next_expired``.
         """
         picked = (
-            select(idempotency_key.c.key).where(idempotency_key.c.created_at < cutoff).limit(limit)
+            select(idempotency_key.c.key)
+            .where(idempotency_key.c.created_at < cutoff)
+            .order_by(idempotency_key.c.key)
+            .limit(limit)
+            .with_for_update(skip_locked=True)
         )
         result = await self._conn.execute(
             delete(idempotency_key).where(idempotency_key.c.key.in_(picked))
