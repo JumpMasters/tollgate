@@ -2,8 +2,10 @@
 
 Migrations run against the same async engine the application uses; the URL comes
 from ``Settings`` (env ``TOLLGATE_DATABASE_URL``). ``target_metadata`` is the
-canonical schema in ``tollgate.adapters.postgres.schema``, so autogenerate compares
-against it and the baseline migration (``metadata.create_all``) cannot drift.
+canonical schema in ``tollgate.adapters.postgres.schema``, so ``--autogenerate``
+diffs each new migration against it. The baseline is frozen explicit DDL (not
+``metadata.create_all``); a migration test asserts the migrated database still
+equals the model, so drift is caught in CI rather than on a fresh install (#64).
 """
 
 from __future__ import annotations
