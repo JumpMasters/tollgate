@@ -1,8 +1,9 @@
 """SQLAlchemy Core schema: the budget ledger of record (spec §3).
 
-This module is the single source of truth for the relational schema. The Alembic
-baseline migration builds it with ``metadata.create_all`` and ``env.py`` points
-Alembic's ``target_metadata`` here, so the migration and the models cannot drift.
+This module is the single source of truth for the relational schema. ``env.py`` points
+Alembic's ``target_metadata`` here so ``--autogenerate`` diffs new migrations against it;
+the baseline is frozen explicit DDL and a migration test reflects the migrated database
+and asserts it still equals this model in full, so the two cannot silently drift (#64).
 All money is integer micro-USD (``BigInteger``); per-token price rates are
 ``Numeric`` (Decimal); timestamps are timezone-aware. Enum-like columns
 (``scope_kind``, ``status``, ``kind``, ``period_kind``) are ``Text`` with named
