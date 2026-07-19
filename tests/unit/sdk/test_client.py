@@ -109,7 +109,9 @@ async def test_commit_sends_the_wire_shape_and_parses_the_result() -> None:
     client = _client(httpx.MockTransport(handler))
     result = await client.commit(
         reservation_id="res-1",
-        usage=ProviderUsage(input_tokens=100, output_tokens=50, cached_input_tokens=10),
+        usage=ProviderUsage(
+            input_tokens=100, output_tokens=50, cached_input_tokens=10, cache_creation_tokens=5
+        ),
         idempotency_key="idem-c",
     )
     assert result.committed_micro == 200
@@ -118,7 +120,12 @@ async def test_commit_sends_the_wire_shape_and_parses_the_result() -> None:
     assert seen["idem"] == "idem-c"
     assert seen["body"] == {
         "reservation_id": "res-1",
-        "usage": {"input_tokens": 100, "output_tokens": 50, "cached_input_tokens": 10},
+        "usage": {
+            "input_tokens": 100,
+            "output_tokens": 50,
+            "cached_input_tokens": 10,
+            "cache_creation_tokens": 5,
+        },
     }
 
 

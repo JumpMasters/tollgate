@@ -59,6 +59,7 @@ def commit_fingerprint(principal: Principal, command: CommitCommand) -> str:
             "input_tokens": command.usage.input_tokens,
             "output_tokens": command.usage.output_tokens,
             "cached_input_tokens": command.usage.cached_input_tokens,
+            "cache_creation_tokens": command.usage.cache_creation_tokens,
         }
     )
 
@@ -121,6 +122,7 @@ class CommitHandler:
                 input_tokens=command.usage.input_tokens,
                 output_tokens=command.usage.output_tokens,
                 cached_input_tokens=command.usage.cached_input_tokens,
+                cache_creation_tokens=command.usage.cache_creation_tokens,
             )
             lines = ordered_lines(await tx.reservations.find_lines(command.reservation_id))
 

@@ -473,6 +473,20 @@ async def test_commit_of_a_reaped_reservation_self_heals() -> None:
     assert uow.committed is True
 
 
+async def test_commit_prices_cache_creation_tokens() -> None:
+    # _PRICE has input=1, output=2, cached=0.5, cache_creation=1.25.
+    # usage: 100 in / 20 cache-read / 50 out / 40 cache-creation
+    #   (100-20)*1 + 20*0.5 + 50*2 + 40*1.25 = 80 + 10 + 100 + 50 = 240 (was 190 without creation)
+    usage = ProviderUsage(
+        input_tokens=100, output_tokens=50, cached_input_tokens=20, cache_creation_tokens=40
+    )
+    handler, _uow = _build()
+    result = await handler.commit(_auth(), _command(usage=usage))
+    assert result == CommitResult(
+        reservation_id=ReservationId("res-1"), committed_micro=240, overage_micro=0
+    )
+
+
 def test_commit_fingerprint_is_stable_and_usage_sensitive() -> None:
     principal = _principal()
     base = _command()
@@ -480,3 +494,12 @@ def test_commit_fingerprint_is_stable_and_usage_sensitive() -> None:
     assert commit_fingerprint(principal, base) != commit_fingerprint(
         principal, _command(usage=ProviderUsage(input_tokens=100, output_tokens=51))
     )
+
+
+def test_commit_fingerprint_is_sensitive_to_cache_creation_tokens() -> None:
+    principal = _principal()
+    base = _command(usage=ProviderUsage(input_tokens=100, output_tokens=50))
+    more = _command(
+        usage=ProviderUsage(input_tokens=100, output_tokens=50, cache_creation_tokens=10)
+    )
+    assert commit_fingerprint(principal, base) != commit_fingerprint(principal, more)

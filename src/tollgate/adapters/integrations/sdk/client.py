@@ -19,6 +19,7 @@ class ProviderUsage:
     input_tokens: int
     output_tokens: int
     cached_input_tokens: int = 0
+    cache_creation_tokens: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,6 +132,7 @@ class TollgateClient:
                 "input_tokens": usage.input_tokens,
                 "output_tokens": usage.output_tokens,
                 "cached_input_tokens": usage.cached_input_tokens,
+                "cache_creation_tokens": usage.cache_creation_tokens,
             },
         }
         data = await self._post("/v1/commit", body, idempotency_key=idempotency_key)

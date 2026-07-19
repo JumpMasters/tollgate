@@ -51,11 +51,15 @@ class ProviderUsage:
     Actuals come from the provider's usage report, never caller-asserted.
     ``cached_input_tokens`` is the subset of ``input_tokens`` served from the
     provider's prompt cache (priced at the cached rate by the cost model).
+    ``cache_creation_tokens`` is the count of tokens written into the provider's
+    prompt cache for later reuse (priced at the cache-creation rate) -- it is
+    disjoint from ``input_tokens``, not a subset of it.
     """
 
     input_tokens: int
     output_tokens: int
     cached_input_tokens: int = 0
+    cache_creation_tokens: int = 0
 
 
 @dataclass(frozen=True, slots=True)

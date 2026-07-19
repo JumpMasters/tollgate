@@ -405,3 +405,14 @@ def test_grace_backfill_fingerprint_is_stable_and_command_sensitive() -> None:
     assert grace_backfill_fingerprint(principal, base) != grace_backfill_fingerprint(
         principal, _command(project_id=ProjectId("proj-1"))
     )
+
+
+def test_grace_fingerprint_is_sensitive_to_cache_creation_tokens() -> None:
+    principal = _principal()
+    base = _command(usage=ProviderUsage(input_tokens=100, output_tokens=50))
+    more = _command(
+        usage=ProviderUsage(input_tokens=100, output_tokens=50, cache_creation_tokens=10)
+    )
+    assert grace_backfill_fingerprint(principal, base) != grace_backfill_fingerprint(
+        principal, more
+    )

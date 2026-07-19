@@ -71,13 +71,13 @@ async def test_reserve_then_commit_on_clean_exit_with_usage() -> None:
     async with _guard(client) as call:
         assert call.reservation_id == "res-1"
         assert call.estimated_micro == 300
-        call.record_usage(input_tokens=90, output_tokens=40)
+        call.record_usage(input_tokens=90, output_tokens=40, cache_creation_tokens=3)
     assert client.reserved is not None
     # input bound = 2 tokens + default margin 16 = 18
     assert client.reserved["input_bound_tokens"] == 18
     assert client.reserved["max_output_tokens"] == 100
     assert client.committed == ProviderUsage(
-        input_tokens=90, output_tokens=40, cached_input_tokens=0
+        input_tokens=90, output_tokens=40, cached_input_tokens=0, cache_creation_tokens=3
     )
     assert client.cancelled is False
 

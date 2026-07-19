@@ -48,6 +48,7 @@ def grace_backfill_fingerprint(principal: Principal, command: GraceBackfillComma
             "input_tokens": command.usage.input_tokens,
             "output_tokens": command.usage.output_tokens,
             "cached_input_tokens": command.usage.cached_input_tokens,
+            "cache_creation_tokens": command.usage.cache_creation_tokens,
             "project_id": command.project_id,
         }
     )
@@ -109,6 +110,7 @@ class GraceBackfillHandler:
                 input_tokens=command.usage.input_tokens,
                 output_tokens=command.usage.output_tokens,
                 cached_input_tokens=command.usage.cached_input_tokens,
+                cache_creation_tokens=command.usage.cache_creation_tokens,
             )
             period_start = calendar_month_start(self._clock.now())
 
