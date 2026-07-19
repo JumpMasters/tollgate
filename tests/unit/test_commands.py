@@ -171,3 +171,21 @@ def test_grace_backfill_result_reports_cost_and_price_basis() -> None:
     result = GraceBackfillResult(actual_micro=4_200, price_book_version="2026-06-22")
     assert result.actual_micro == 4_200
     assert result.price_book_version == "2026-06-22"
+
+
+def test_reserve_command_labels_are_an_immutable_copy() -> None:
+    # frozen prevents rebinding, not mutation: the labels must be a read-only copy so mutating the
+    # caller's dict after construction cannot alter the (already fingerprinted) command (#78).
+    source = {"env": "prod"}
+    command = ReserveCommand(
+        idempotency_key="k",
+        provider="p",
+        model="m",
+        input_bound_tokens=1,
+        max_output_tokens=1,
+        labels=source,
+    )
+    source["env"] = "changed"
+    assert command.labels == {"env": "prod"}  # unaffected by the later mutation
+    with pytest.raises(TypeError):
+        command.labels["env"] = "x"  # type: ignore[index]  # a read-only view, not the live dict

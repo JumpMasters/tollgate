@@ -10,7 +10,9 @@ permissions:
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Supersede in-progress PR runs, but never cancel a push-to-main run: two quick merges would
+  # otherwise leave the first merged commit on main with no completed CI verdict (#79).
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   PYTHON_VERSION: "3.13"
