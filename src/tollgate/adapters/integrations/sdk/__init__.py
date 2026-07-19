@@ -1,4 +1,5 @@
-"""The Tollgate SDK guard — reserve-before-dispatch enforcement for model calls (spec §4, §5.4).
+"""The Tollgate SDK guard — reserve-before-dispatch enforcement for model calls (section 4,
+section 5.4).
 
 ``async with guard(client, ...)`` reserves worst-case budget before a call dispatches (deny →
 never dispatch), heartbeats the reservation while it runs, and commits or cancels in a finally.

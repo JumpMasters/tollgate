@@ -144,3 +144,13 @@ name = "adapters implement ports without importing application (structural confo
 type = "forbidden"
 source_modules = ["tollgate.adapters"]
 forbidden_modules = ["tollgate.application"]
+
+[[tool.importlinter.contracts]]
+name = "the tollgate SDK client stays decoupled (no domain/api/workers)"
+type = "forbidden"
+source_modules = ["tollgate.adapters.integrations.sdk"]
+forbidden_modules = [
+    "tollgate.domain",
+    "tollgate.api",
+    "tollgate.workers",
+]

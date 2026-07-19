@@ -3,7 +3,7 @@
 The core ships a conservative heuristic so the SDK has no hard native dependency; a
 ``tiktoken``-backed tokenizer is available when the ``tokenizers`` extra is installed. Both feed
 ``input_bound_tokens``, which adds a fixed provider margin covering stable provider-side overhead
-so the bound stays in the safe over-reserve direction (spec §4).
+so the bound stays in the safe over-reserve direction (section 4).
 """
 
 from __future__ import annotations

@@ -4,7 +4,7 @@ The SDK is a decoupled client: it defines its own exception taxonomy rather than
 server's domain errors, so a caller catches
 ``tollgate.adapters.integrations.sdk.EnforcementUnavailable`` without pulling in server internals.
 ``EnforcementUnavailable`` is the fail-closed signal a caller keys degraded-mode behaviour on
-(spec §5.6): it covers both a 503 from the control plane and any connectivity/timeout failure
+(section 5.6): it covers both a 503 from the control plane and any connectivity/timeout failure
 reaching it.
 """
 
@@ -57,7 +57,11 @@ class EnforcementUnavailable(TollgateApiError):
 
 
 class InternalError(TollgateApiError):
-    """The control plane returned a 5xx tagged with its generic ``internal_error`` code."""
+    """The control plane hit a server-side invariant or internal error (5xx).
+
+    Covers the generic ``internal_error`` code as well as invariant violations it is tagged with
+    directly, such as ``conflicting_budget_scope`` and ``balance_guard_violation``.
+    """
 
 
 _BY_CODE: dict[str, type[TollgateApiError]] = {

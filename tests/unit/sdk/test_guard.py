@@ -112,6 +112,19 @@ async def test_denied_reserve_never_enters_the_body() -> None:
     assert client.cancelled is False  # nothing was reserved, so nothing to cancel
 
 
+async def test_cleanup_cancel_failure_does_not_mask_the_body_exception() -> None:
+    client = _FakeClient()
+
+    async def _boom(*, reservation_id: str, idempotency_key: str) -> object:
+        raise RuntimeError("control plane down during cleanup")
+
+    client.cancel = _boom  # type: ignore[assignment]
+    with pytest.raises(ValueError, match="provider failed"):
+        async with _guard(client) as call:
+            call.record_usage(input_tokens=1, output_tokens=1)
+            raise ValueError("provider failed")
+
+
 async def test_strict_mode_rejects_an_uncapped_call() -> None:
     client = _FakeClient()
     strict = SdkConfig(base_url="http://t", token="tok", strict_uncapped=True)

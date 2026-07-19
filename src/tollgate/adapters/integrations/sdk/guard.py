@@ -1,4 +1,4 @@
-"""The guard: reserve worst-case budget before dispatch, commit/cancel in a finally (spec §4)."""
+"""The guard: reserve worst-case budget before dispatch, commit/cancel in a finally (section 4)."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ class GuardedCall:
     def record_usage(
         self, *, input_tokens: int, output_tokens: int, cached_input_tokens: int = 0
     ) -> None:
-        """Record the provider-reported usage to reconcile on commit (spec §4)."""
+        """Record the provider-reported usage to reconcile on commit (section 4)."""
         self._usage = ProviderUsage(
             input_tokens=input_tokens,
             output_tokens=output_tokens,
@@ -48,7 +48,7 @@ def _default_key() -> str:
 
 
 async def _heartbeat(client: TollgateClient, reservation_id: str, interval: float) -> None:
-    """Extend the reservation's TTL every ``interval`` seconds until cancelled (spec §5.4)."""
+    """Extend the reservation's TTL every ``interval`` seconds until cancelled (section 5.4)."""
     while True:
         await asyncio.sleep(interval)
         try:
@@ -82,12 +82,17 @@ async def guard(
     idempotency_key: str | None = None,
     new_key: Callable[[], str] = _default_key,
 ) -> AsyncIterator[GuardedCall]:
-    """Reserve before dispatch; commit on clean exit with usage, else cancel (spec §4, §5.4).
+    """Reserve before dispatch; commit on clean exit with usage, else cancel (section 4,
+    section 5.4).
 
     A denied reserve (``BudgetDenied``/``NotAuthorized``) or an unreachable control plane
     (``EnforcementUnavailable``, fail-closed) raises *before* the body runs, so the model call
     never dispatches. On exit the reservation is always resolved: commit the recorded usage on a
     clean exit, otherwise cancel (the body raised, or the caller recorded no usage).
+
+    ``new_key`` must return a fresh value on every call: reserve (when no explicit
+    ``idempotency_key`` is given), commit, and cancel each call it once, and a constant generator
+    would collide the reserve and commit keys into a 409 ``idempotency_key_reuse``.
     """
     if max_output_tokens is None:
         if config.strict_uncapped:
@@ -118,7 +123,8 @@ async def guard(
         yield call
     except BaseException:
         await _stop(heartbeat)
-        await client.cancel(reservation_id=call.reservation_id, idempotency_key=new_key())
+        with contextlib.suppress(Exception):
+            await client.cancel(reservation_id=call.reservation_id, idempotency_key=new_key())
         raise
     else:
         await _stop(heartbeat)
