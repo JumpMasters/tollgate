@@ -95,6 +95,21 @@ async def test_same_key_under_different_principals_is_allowed(db_conn: AsyncConn
     assert count == 2
 
 
+async def test_claim_next_expired_skips_excluded_ids(db_conn: AsyncConnection) -> None:
+    # exclude_ids removes candidates so a reservation whose reap failed this tick cannot
+    # monopolize the queue head and starve the ones behind it (#74).
+    await _seed_context(db_conn)
+    repo = PostgresReservationRepository(db_conn)
+    await repo.insert(_record(reservation_id="r1", idem="k1"), [_line("r1")])
+    await repo.insert(_record(reservation_id="r2", idem="k2"), [_line("r2")])
+    # both are held and past their TTL (ttl_deadline = PERIOD, well before _NOW)
+    excluding_r1 = await repo.claim_next_expired(_NOW, [ReservationId("r1")])
+    assert excluding_r1 is not None
+    assert excluding_r1.record.reservation_id == "r2"  # r1 skipped despite being a candidate
+    # r2 is now reaped; excluding both leaves nothing claimable
+    assert await repo.claim_next_expired(_NOW, [ReservationId("r1"), ReservationId("r2")]) is None
+
+
 async def _fetch_reservation(conn: AsyncConnection, reservation_id: str) -> Row[tuple[object, ...]]:
     return (
         await conn.execute(

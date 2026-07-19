@@ -56,6 +56,7 @@ async def test_idempotency_reaper_deletes_only_aged_keys_in_bounded_batches(
         clock=_ClockAt(_NOW),
         ttl_hours=24,
         batch_size=2,  # forces multiple bounded batches: 2 + 2 + 1
+        max_batches_per_tick=100,
     )
     deleted = await handler.run_once()
     assert deleted == 5  # all five aged keys, across three batches
@@ -70,7 +71,11 @@ async def test_idempotency_reaper_with_no_aged_keys_deletes_nothing(
 ) -> None:
     await _insert_key(committing_engine, key="fresh", created_at=_NOW - timedelta(hours=1))
     handler = IdempotencyReaperHandler(
-        uow=PostgresUnitOfWork(committing_engine), clock=_ClockAt(_NOW), ttl_hours=24, batch_size=2
+        uow=PostgresUnitOfWork(committing_engine),
+        clock=_ClockAt(_NOW),
+        ttl_hours=24,
+        batch_size=2,
+        max_batches_per_tick=100,
     )
     assert await handler.run_once() == 0
     assert await _count(committing_engine) == 1

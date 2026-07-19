@@ -96,7 +96,9 @@ class _FakeReservations:
         self.requested.append((reservation_id, ttl_deadline))
         return self._advanced
 
-    async def claim_next_expired(self, now: datetime) -> StoredReservation | None:
+    async def claim_next_expired(
+        self, now: datetime, exclude_ids: Sequence[ReservationId] = ()
+    ) -> StoredReservation | None:
         raise AssertionError("this handler never reaps")
 
 

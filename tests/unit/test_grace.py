@@ -205,7 +205,9 @@ class _StubReservations:
     ) -> datetime | None:
         return None
 
-    async def claim_next_expired(self, now: datetime) -> StoredReservation | None:
+    async def claim_next_expired(
+        self, now: datetime, exclude_ids: Sequence[ReservationId] = ()
+    ) -> StoredReservation | None:
         raise AssertionError("this handler never reaps")
 
 

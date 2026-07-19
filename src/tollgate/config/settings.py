@@ -83,10 +83,36 @@ class Settings(BaseSettings):
         gt=0,
         description="Seconds the idempotency reaper waits between ticks (§5.5).",
     )
+    worker_max_consecutive_failures: int = Field(
+        default=10,
+        ge=1,
+        description=(
+            "Consecutive tick failures before a worker exits non-zero for the orchestrator to "
+            "restart and alert, rather than failing every tick while looking healthy (#75)."
+        ),
+    )
+    worker_backoff_base_seconds: float = Field(
+        default=1.0,
+        gt=0,
+        description="Base of the exponential backoff a worker waits after a failed tick (#75).",
+    )
+    worker_backoff_max_seconds: float = Field(
+        default=60.0,
+        gt=0,
+        description="Ceiling for the worker failure backoff (#75).",
+    )
     idempotency_reaper_batch_size: int = Field(
         default=500,
         ge=1,
         description="Rows deleted per idempotency-reaper batch (bounded per-tx work).",
+    )
+    idempotency_reaper_max_batches_per_tick: int = Field(
+        default=100,
+        ge=1,
+        description=(
+            "Max batches one idempotency-reaper tick drains before yielding to the next tick, "
+            "so a large backlog cannot run an unbounded tick that starves graceful shutdown (#73)."
+        ),
     )
 
 

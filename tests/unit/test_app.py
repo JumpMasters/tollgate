@@ -150,6 +150,7 @@ async def test_serve_runs_the_loop_and_disposes_the_engine() -> None:
         interval_seconds=0,
         engine=_FakeEngine(),
         name="test",
+        settings=Settings(token_hash_secret=SecretStr("s")),
         stop=stop,
         install_signals=False,
     )

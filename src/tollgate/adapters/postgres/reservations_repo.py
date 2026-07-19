@@ -225,23 +225,31 @@ class PostgresReservationRepository:
         row = (await self._conn.execute(stmt)).first()
         return None if row is None else row.ttl_deadline
 
-    async def claim_next_expired(self, now: datetime) -> StoredReservation | None:
+    async def claim_next_expired(
+        self, now: datetime, exclude_ids: Sequence[ReservationId] = ()
+    ) -> StoredReservation | None:
         """Claim and reap the oldest expired held reservation, or ``None`` if none remain (§5.4).
 
         The canonical Postgres queue claim: a ``FOR UPDATE SKIP LOCKED`` sub-select picks one
         held reservation past its ``ttl_deadline`` (skipping rows another reaper or a racing
         commit already locks), and the enclosing ``UPDATE`` flips it to ``reaped`` and returns the
-        row. Because ``extend`` advances ``ttl_deadline`` monotonically, ``ttl_deadline < now``
-        already means "not heartbeated recently" — no separate heartbeat column is needed. The
-        caller releases this reservation's held estimate on its lines in the same transaction, so
-        the status flip and the balance release commit atomically (exactly-once, §5.2).
+        row. ``exclude_ids`` are filtered out of the candidate set so a reservation whose reap
+        already failed this tick — its rolled-back status flip left it ``held`` with the oldest
+        deadline — does not monopolize the queue head (#74). Because ``extend`` advances
+        ``ttl_deadline`` monotonically, ``ttl_deadline < now`` already means "not heartbeated
+        recently" — no separate heartbeat column is needed. The caller releases this reservation's
+        held estimate on its lines in the same transaction, so the status flip and the balance
+        release commit atomically (exactly-once, §5.2).
         """
+        conditions = [
+            reservation_table.c.status == ReservationStatus.HELD,
+            reservation_table.c.ttl_deadline < now,
+        ]
+        if exclude_ids:
+            conditions.append(reservation_table.c.reservation_id.notin_(exclude_ids))
         picked = (
             select(reservation_table.c.reservation_id)
-            .where(
-                reservation_table.c.status == ReservationStatus.HELD,
-                reservation_table.c.ttl_deadline < now,
-            )
+            .where(*conditions)
             .order_by(reservation_table.c.ttl_deadline)
             .limit(1)
             .with_for_update(skip_locked=True)

@@ -138,6 +138,7 @@ def _idempotency_reaper(engine: AsyncEngine, settings: Settings) -> IdempotencyR
         clock=SystemClock(),
         ttl_hours=settings.idempotency_ttl_hours,
         batch_size=settings.idempotency_reaper_batch_size,
+        max_batches_per_tick=settings.idempotency_reaper_max_batches_per_tick,
     )
 
 
@@ -153,6 +154,7 @@ async def _serve(
     interval_seconds: float,
     engine: SupportsDispose,
     name: str,
+    settings: Settings,
     stop: asyncio.Event | None = None,
     install_signals: bool = True,
 ) -> None:
@@ -164,7 +166,15 @@ async def _serve(
             with contextlib.suppress(NotImplementedError):
                 loop.add_signal_handler(sig, stop.set)
     try:
-        await run_forever(tick, interval_seconds=interval_seconds, stop=stop, name=name)
+        await run_forever(
+            tick,
+            interval_seconds=interval_seconds,
+            stop=stop,
+            name=name,
+            max_consecutive_failures=settings.worker_max_consecutive_failures,
+            backoff_base_seconds=settings.worker_backoff_base_seconds,
+            backoff_max_seconds=settings.worker_backoff_max_seconds,
+        )
     finally:
         await engine.dispose()
 
@@ -179,6 +189,7 @@ def run_reservation_reaper() -> None:  # pragma: no cover - process entrypoint
             interval_seconds=settings.reaper_poll_interval_seconds,
             engine=engine,
             name="reservation-reaper",
+            settings=settings,
         )
     )
 
@@ -193,5 +204,6 @@ def run_idempotency_reaper() -> None:  # pragma: no cover - process entrypoint
             interval_seconds=settings.idempotency_reaper_poll_interval_seconds,
             engine=engine,
             name="idempotency-reaper",
+            settings=settings,
         )
     )
