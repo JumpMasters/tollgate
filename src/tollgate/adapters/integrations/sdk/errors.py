@@ -72,6 +72,8 @@ _BY_CODE: dict[str, type[TollgateApiError]] = {
     "non_positive_estimate": InvalidRequest,
     "enforcement_unavailable": EnforcementUnavailable,
     "internal_error": InternalError,
+    "conflicting_budget_scope": InternalError,
+    "balance_guard_violation": InternalError,
 }
 
 

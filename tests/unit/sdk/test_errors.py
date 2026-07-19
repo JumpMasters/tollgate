@@ -32,6 +32,8 @@ from tollgate.adapters.integrations.sdk.errors import (
         (422, "amount_out_of_range", InvalidRequest),
         (503, "enforcement_unavailable", EnforcementUnavailable),
         (500, "internal_error", InternalError),
+        (500, "conflicting_budget_scope", InternalError),
+        (500, "balance_guard_violation", InternalError),
     ],
 )
 def test_error_for_maps_status_and_code(status: int, code: str, expected: type) -> None:
