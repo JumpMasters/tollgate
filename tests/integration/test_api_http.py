@@ -52,6 +52,7 @@ async def _seed(engine: AsyncEngine, *, user_limit: int = 1_000, org_limit: int 
                 input_micro_per_token=Decimal("1"),
                 output_micro_per_token=Decimal("2"),
                 cached_input_micro_per_token=Decimal("0.5"),
+                cache_creation_micro_per_token=Decimal("1.25"),
             )
         )
         await conn.execute(org.insert().values(org_id="o1", name="Acme"))

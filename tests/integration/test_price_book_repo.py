@@ -19,6 +19,7 @@ async def _publish(
     input_rate: str,
     output_rate: str,
     cached_rate: str,
+    cache_creation_rate: str = "1.25",
     provider: str = "anthropic",
     model: str = "claude",
 ) -> None:
@@ -31,6 +32,7 @@ async def _publish(
             input_micro_per_token=Decimal(input_rate),
             output_micro_per_token=Decimal(output_rate),
             cached_input_micro_per_token=Decimal(cached_rate),
+            cache_creation_micro_per_token=Decimal(cache_creation_rate),
         )
     )
 
@@ -70,3 +72,18 @@ async def test_resolve_price_returns_none_for_an_unpriced_pair(db_conn: AsyncCon
         cached_rate="0.5",
     )
     assert await PostgresPriceBookRepository(db_conn).resolve_price("openai", "gpt") is None
+
+
+async def test_resolve_price_includes_cache_creation_rate(db_conn: AsyncConnection) -> None:
+    await _publish(
+        db_conn,
+        version="v1",
+        published_at=datetime(2026, 6, 1, tzinfo=UTC),
+        input_rate="1",
+        output_rate="2",
+        cached_rate="0.5",
+        cache_creation_rate="1.25",
+    )
+    resolved = await PostgresPriceBookRepository(db_conn).resolve_price("anthropic", "claude")
+    assert resolved is not None
+    assert resolved.price.cache_creation_micro_per_token == Decimal("1.25")

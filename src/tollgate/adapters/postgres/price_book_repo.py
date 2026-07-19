@@ -33,6 +33,7 @@ class PostgresPriceBookRepository:
                     price.c.input_micro_per_token,
                     price.c.output_micro_per_token,
                     price.c.cached_input_micro_per_token,
+                    price.c.cache_creation_micro_per_token,
                 )
                 .select_from(
                     price.join(price_book, price.c.price_book_version == price_book.c.version)
@@ -52,6 +53,7 @@ class PostgresPriceBookRepository:
                 input_micro_per_token=Decimal(row.input_micro_per_token),
                 output_micro_per_token=Decimal(row.output_micro_per_token),
                 cached_input_micro_per_token=Decimal(row.cached_input_micro_per_token),
+                cache_creation_micro_per_token=Decimal(row.cache_creation_micro_per_token),
             ),
         )
 
@@ -68,6 +70,7 @@ class PostgresPriceBookRepository:
                     price.c.input_micro_per_token,
                     price.c.output_micro_per_token,
                     price.c.cached_input_micro_per_token,
+                    price.c.cache_creation_micro_per_token,
                 ).where(
                     price.c.price_book_version == version,
                     price.c.provider == provider,
@@ -83,4 +86,5 @@ class PostgresPriceBookRepository:
             input_micro_per_token=Decimal(row.input_micro_per_token),
             output_micro_per_token=Decimal(row.output_micro_per_token),
             cached_input_micro_per_token=Decimal(row.cached_input_micro_per_token),
+            cache_creation_micro_per_token=Decimal(row.cache_creation_micro_per_token),
         )

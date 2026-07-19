@@ -122,6 +122,7 @@ price = Table(
     Column("input_micro_per_token", Numeric, nullable=False),
     Column("output_micro_per_token", Numeric, nullable=False),
     Column("cached_input_micro_per_token", Numeric, nullable=False),
+    Column("cache_creation_micro_per_token", Numeric, nullable=False),
     PrimaryKeyConstraint("price_book_version", "provider", "model"),
 )
 
