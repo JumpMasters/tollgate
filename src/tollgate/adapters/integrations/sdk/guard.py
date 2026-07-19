@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
+import logging
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from uuid import uuid4
@@ -10,6 +13,8 @@ from tollgate.adapters.integrations.sdk.client import ProviderUsage, TollgateCli
 from tollgate.adapters.integrations.sdk.config import SdkConfig
 from tollgate.adapters.integrations.sdk.errors import InvalidRequest
 from tollgate.adapters.integrations.sdk.tokenizer import Tokenizer, input_bound_tokens
+
+logger = logging.getLogger(__name__)
 
 
 class GuardedCall:
@@ -40,6 +45,26 @@ class GuardedCall:
 
 def _default_key() -> str:
     return uuid4().hex
+
+
+async def _heartbeat(client: TollgateClient, reservation_id: str, interval: float) -> None:
+    """Extend the reservation's TTL every ``interval`` seconds until cancelled (spec §5.4)."""
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            await client.extend(reservation_id=reservation_id)
+        except Exception:  # a reaper is the backstop; a missed heartbeat must not break the call
+            logger.warning(
+                "heartbeat extend failed for %s; the reaper is the backstop", reservation_id
+            )
+
+
+async def _stop(task: asyncio.Task[None] | None) -> None:
+    if task is None:
+        return
+    task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
 
 
 @asynccontextmanager
@@ -84,12 +109,19 @@ async def guard(
         labels=labels,
     )
     call = GuardedCall(reserved.reservation_id, reserved.estimated_micro)
+    heartbeat: asyncio.Task[None] | None = None
+    if config.heartbeat_interval_seconds > 0:
+        heartbeat = asyncio.create_task(
+            _heartbeat(client, call.reservation_id, config.heartbeat_interval_seconds)
+        )
     try:
         yield call
     except BaseException:
+        await _stop(heartbeat)
         await client.cancel(reservation_id=call.reservation_id, idempotency_key=new_key())
         raise
     else:
+        await _stop(heartbeat)
         if call.usage is not None:
             await client.commit(
                 reservation_id=call.reservation_id, usage=call.usage, idempotency_key=new_key()
