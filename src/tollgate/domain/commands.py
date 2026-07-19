@@ -14,6 +14,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
+from types import MappingProxyType
 
 from tollgate.domain.ids import ProjectId, ReservationId
 
@@ -36,6 +37,11 @@ class ReserveCommand:
     max_output_tokens: int
     labels: Mapping[str, str]
     project_id: ProjectId | None = None
+
+    def __post_init__(self) -> None:
+        # frozen guards rebinding, not the referenced dict; store a read-only copy so a later
+        # mutation of the caller's dict cannot alter this (already fingerprinted) command (#78).
+        object.__setattr__(self, "labels", MappingProxyType(dict(self.labels)))
 
 
 @dataclass(frozen=True, slots=True)

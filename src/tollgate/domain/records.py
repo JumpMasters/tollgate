@@ -13,6 +13,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
+from types import MappingProxyType
 from typing import Any
 
 from tollgate.domain.ids import BudgetId, LedgerEntryId, PrincipalId, ReservationId
@@ -59,6 +60,10 @@ class ReservationRecord:
     max_output_tokens: int
     ttl_deadline: datetime
     labels: Mapping[str, str]
+
+    def __post_init__(self) -> None:
+        # A read-only copy: frozen prevents rebinding, not mutation of the referenced dict (#78).
+        object.__setattr__(self, "labels", MappingProxyType(dict(self.labels)))
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,3 +139,8 @@ class IdempotencyClaim:
 
     outcome: ClaimOutcome
     response: Mapping[str, Any] | None = None
+
+    def __post_init__(self) -> None:
+        # A read-only copy of the cached response, so nothing can mutate it after the claim (#78).
+        if self.response is not None:
+            object.__setattr__(self, "response", MappingProxyType(dict(self.response)))
