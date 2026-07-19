@@ -33,3 +33,13 @@ def test_reaper_settings_have_sane_defaults() -> None:
     assert settings.idempotency_ttl_hours == 24
     assert settings.idempotency_reaper_poll_interval_seconds == 3600.0
     assert settings.idempotency_reaper_batch_size == 500
+
+
+def test_engine_and_worker_settings_have_defaults() -> None:
+    settings = Settings(token_hash_secret=SecretStr("s"))
+    assert settings.db_pool_size == 5
+    assert settings.db_max_overflow == 10
+    assert settings.db_pool_timeout_seconds == 10.0
+    assert settings.db_connect_timeout_seconds == 10.0
+    # Worker/maintenance queries are tuned independently of the 2s reserve hot path (#63).
+    assert settings.worker_statement_timeout_ms == 30_000

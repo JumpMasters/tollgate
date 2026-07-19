@@ -103,6 +103,12 @@ def test_a_datastore_outage_yields_the_503_envelope() -> None:
     assert response.json()["error"]["code"] == "enforcement_unavailable"
 
 
+def test_build_app_engine_uses_the_configured_pool_size() -> None:
+    settings = Settings(token_hash_secret=SecretStr("s"), db_pool_size=3)
+    app = build_app(settings)
+    assert app.state.engine.sync_engine.pool.size() == 3
+
+
 def test_worker_engine_builds_an_async_engine() -> None:
     engine = _worker_engine(_settings())
     assert isinstance(engine, AsyncEngine)

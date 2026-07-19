@@ -251,4 +251,7 @@ idempotency_key = Table(
     Column("response", JSONB, nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     PrimaryKeyConstraint("principal_id", "key"),
+    # The reaper scans ``WHERE created_at < cutoff ORDER BY created_at``; without this index every
+    # tick is a full table scan that outgrows the worker statement timeout at volume (#63).
+    Index("ix_idempotency_key_created_at", "created_at"),
 )

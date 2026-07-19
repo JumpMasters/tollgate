@@ -64,6 +64,10 @@ def build_app(settings: Settings | None = None) -> FastAPI:
     engine = build_engine(
         settings.database_url.get_secret_value(),
         statement_timeout_ms=settings.reserve_statement_timeout_ms,
+        pool_size=settings.db_pool_size,
+        max_overflow=settings.db_max_overflow,
+        pool_timeout_seconds=settings.db_pool_timeout_seconds,
+        connect_timeout_seconds=settings.db_connect_timeout_seconds,
     )
 
     @asynccontextmanager
@@ -101,10 +105,19 @@ def build_app(settings: Settings | None = None) -> FastAPI:
 
 
 def _worker_engine(settings: Settings) -> AsyncEngine:
-    """Build the datastore engine a reaper worker process runs on."""
+    """Build the datastore engine a reaper worker process runs on.
+
+    Maintenance scans and batch deletes are not the reserve hot path, so the worker uses the
+    longer ``worker_statement_timeout_ms`` — a reaper batch that outruns the 2s reserve budget
+    would otherwise be cancelled every tick and the table would grow without bound (#63).
+    """
     return build_engine(
         settings.database_url.get_secret_value(),
-        statement_timeout_ms=settings.reserve_statement_timeout_ms,
+        statement_timeout_ms=settings.worker_statement_timeout_ms,
+        pool_size=settings.db_pool_size,
+        max_overflow=settings.db_max_overflow,
+        pool_timeout_seconds=settings.db_pool_timeout_seconds,
+        connect_timeout_seconds=settings.db_connect_timeout_seconds,
     )
 
 

@@ -97,14 +97,15 @@ class PostgresIdempotencyRepository:
         so the ``LIMIT`` applies to the delete set (Postgres has no ``DELETE … LIMIT``). Safe
         because ``reservation``'s idempotency guard is UNIQUE, not a foreign key: an aged key never
         orphans a reservation, and a later reuse that collides with the surviving reservation row is
-        mapped to a 409 on the reserve path (#61). The sub-select orders by the primary key and
-        takes its locks with ``FOR UPDATE SKIP LOCKED``, so concurrent reapers pick disjoint,
-        deterministically-ordered batches and make progress without deadlocking.
+        mapped to a 409 on the reserve path (#61). The sub-select filters and orders by
+        ``created_at`` — served by ``ix_idempotency_key_created_at`` so each batch is an index range
+        scan, not a full table scan (#63) — and takes its locks with ``FOR UPDATE SKIP LOCKED``, so
+        concurrent reapers pick disjoint oldest-first batches and make progress without deadlocking.
         """
         picked = (
             select(idempotency_key.c.principal_id, idempotency_key.c.key)
             .where(idempotency_key.c.created_at < cutoff)
-            .order_by(idempotency_key.c.principal_id, idempotency_key.c.key)
+            .order_by(idempotency_key.c.created_at)
             .limit(limit)
             .with_for_update(skip_locked=True)
         )
