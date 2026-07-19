@@ -87,3 +87,41 @@ async def test_resolve_price_includes_cache_creation_rate(db_conn: AsyncConnecti
     resolved = await PostgresPriceBookRepository(db_conn).resolve_price("anthropic", "claude")
     assert resolved is not None
     assert resolved.price.cache_creation_micro_per_token == Decimal("1.25")
+
+
+async def test_db_price_prices_cache_creation_end_to_end(db_conn: AsyncConnection) -> None:
+    from decimal import Decimal
+
+    from tollgate.adapters.postgres.price_book_repo import PostgresPriceBookRepository
+    from tollgate.adapters.postgres.schema import price, price_book
+    from tollgate.domain.pricing import actual_micro
+
+    await db_conn.execute(price_book.insert().values(version="pb-e2e"))
+    await db_conn.execute(
+        price.insert().values(
+            price_book_version="pb-e2e",
+            provider="anthropic",
+            model="claude",
+            input_micro_per_token=Decimal("1"),
+            output_micro_per_token=Decimal("2"),
+            cached_input_micro_per_token=Decimal("0.5"),
+            cache_creation_micro_per_token=Decimal("1.25"),  # premium: above input=1
+        )
+    )
+    resolved = await PostgresPriceBookRepository(db_conn).resolve_price("anthropic", "claude")
+    assert resolved is not None
+    # 100 in / 20 cache-read / 50 out, plus 40 disjoint cache-creation tokens:
+    #   (100-20)*1 + 20*0.5 + 50*2 + 40*1.25 = 80 + 10 + 100 + 50 = 240
+    cost = actual_micro(
+        resolved.price,
+        input_tokens=100,
+        output_tokens=50,
+        cached_input_tokens=20,
+        cache_creation_tokens=40,
+    )
+    assert cost == 240
+    # and the same call with no creation tokens is 50 micro cheaper (proves the term is additive):
+    assert (
+        actual_micro(resolved.price, input_tokens=100, output_tokens=50, cached_input_tokens=20)
+        == 190
+    )
