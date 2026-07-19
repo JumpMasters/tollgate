@@ -164,5 +164,5 @@ def _error_envelope(response: httpx.Response) -> tuple[str | None, str]:
         payload = response.json()
         error = payload["error"]
         return (error.get("code"), error.get("message") or response.reason_phrase)
-    except (ValueError, KeyError, TypeError):
+    except (ValueError, KeyError, TypeError, AttributeError):
         return (None, response.reason_phrase or f"HTTP {response.status_code}")

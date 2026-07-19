@@ -7,7 +7,7 @@ import json
 import httpx
 import pytest
 
-from tollgate.adapters.integrations.sdk.client import TollgateClient
+from tollgate.adapters.integrations.sdk.client import ProviderUsage, TollgateClient
 from tollgate.adapters.integrations.sdk.config import SdkConfig
 from tollgate.adapters.integrations.sdk.errors import BudgetDenied, EnforcementUnavailable
 
@@ -92,6 +92,51 @@ async def test_connectivity_failure_fails_closed() -> None:
         await client.reserve(
             provider="a", model="m", input_bound_tokens=1, max_output_tokens=1, idempotency_key="k"
         )
+
+
+async def test_commit_sends_the_wire_shape_and_parses_the_result() -> None:
+    seen: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["url"] = str(request.url)
+        seen["idem"] = request.headers.get("Idempotency-Key")
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={"reservation_id": "res-1", "committed_micro": 200, "overage_micro": 50},
+        )
+
+    client = _client(httpx.MockTransport(handler))
+    result = await client.commit(
+        reservation_id="res-1",
+        usage=ProviderUsage(input_tokens=100, output_tokens=50, cached_input_tokens=10),
+        idempotency_key="idem-c",
+    )
+    assert result.committed_micro == 200
+    assert result.overage_micro == 50
+    assert str(seen["url"]).endswith("/v1/commit")
+    assert seen["idem"] == "idem-c"
+    assert seen["body"] == {
+        "reservation_id": "res-1",
+        "usage": {"input_tokens": 100, "output_tokens": 50, "cached_input_tokens": 10},
+    }
+
+
+async def test_cancel_sends_the_wire_shape_and_parses_the_result() -> None:
+    seen: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["url"] = str(request.url)
+        seen["idem"] = request.headers.get("Idempotency-Key")
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"reservation_id": "res-1", "released_micro": 300})
+
+    client = _client(httpx.MockTransport(handler))
+    result = await client.cancel(reservation_id="res-1", idempotency_key="idem-x")
+    assert result.released_micro == 300
+    assert str(seen["url"]).endswith("/v1/cancel")
+    assert seen["idem"] == "idem-x"
+    assert seen["body"] == {"reservation_id": "res-1"}
 
 
 async def test_extend_sends_no_idempotency_key() -> None:
