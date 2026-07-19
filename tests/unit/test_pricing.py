@@ -25,6 +25,7 @@ PRICE = ModelPrice(
     input_micro_per_token=Decimal("2.5"),
     output_micro_per_token=Decimal("10"),
     cached_input_micro_per_token=Decimal("1.25"),
+    cache_creation_micro_per_token=Decimal("1.25"),
 )
 
 
@@ -43,6 +44,7 @@ def test_model_price_rejects_cached_rate_above_input_rate() -> None:
             input_micro_per_token=Decimal("2.5"),
             output_micro_per_token=Decimal("10"),
             cached_input_micro_per_token=Decimal("3.0"),
+            cache_creation_micro_per_token=Decimal("1.25"),
         )
 
 
@@ -54,6 +56,7 @@ def test_model_price_rejects_negative_rate() -> None:
             input_micro_per_token=Decimal("-1"),
             output_micro_per_token=Decimal("10"),
             cached_input_micro_per_token=Decimal("0"),
+            cache_creation_micro_per_token=Decimal("1.25"),
         )
 
 
@@ -69,6 +72,7 @@ def test_estimate_rounds_up_to_cover_the_worst_case() -> None:
         input_micro_per_token=Decimal("0.4"),
         output_micro_per_token=Decimal("0"),
         cached_input_micro_per_token=Decimal("0"),
+        cache_creation_micro_per_token=Decimal("1.25"),
     )
     # 0.4 * 1 + 0 → 0.4 → the estimate ceilings up so it never under-reserves (#77).
     assert estimate_micro(cheap, input_bound_tokens=1, max_output_tokens=0) == 1
@@ -168,7 +172,92 @@ def test_priced_model_carries_its_version_and_price() -> None:
         input_micro_per_token=Decimal("1"),
         output_micro_per_token=Decimal("2"),
         cached_input_micro_per_token=Decimal("0.5"),
+        cache_creation_micro_per_token=Decimal("1.25"),
     )
     priced = PricedModel(version="2026-06-22", price=price)
     assert priced.version == "2026-06-22"
     assert priced.price is price
+
+
+def test_actual_micro_prices_cache_creation_as_a_disjoint_additive_term() -> None:
+    # creation rate (3.125) intentionally EXCEEDS the input rate (2.5): cache
+    # creation is billed at a premium, unlike cache reads.
+    price = ModelPrice(
+        provider="anthropic",
+        model="claude",
+        input_micro_per_token=Decimal("2.5"),
+        output_micro_per_token=Decimal("10"),
+        cached_input_micro_per_token=Decimal("1.25"),
+        cache_creation_micro_per_token=Decimal("3.125"),
+    )
+    # input 1000 (400 of them cache-read), output 200, plus 800 DISJOINT creation tokens.
+    #   non-cached input: (1000-400)*2.5 = 1500
+    #   cache read:       400*1.25       =  500
+    #   output:           200*10         = 2000
+    #   cache creation:   800*3.125      = 2500   (added on top; NOT subtracted from input)
+    #   total                            = 6500
+    assert (
+        actual_micro(
+            price,
+            input_tokens=1000,
+            output_tokens=200,
+            cached_input_tokens=400,
+            cache_creation_tokens=800,
+        )
+        == 6500
+    )
+
+
+def test_cache_creation_defaults_to_zero_and_leaves_existing_cost_unchanged() -> None:
+    price = ModelPrice(
+        provider="anthropic",
+        model="claude",
+        input_micro_per_token=Decimal("2.5"),
+        output_micro_per_token=Decimal("10"),
+        cached_input_micro_per_token=Decimal("1.25"),
+        cache_creation_micro_per_token=Decimal("3.125"),
+    )
+    # same call with no creation tokens == the pre-existing three-class cost.
+    without = actual_micro(price, input_tokens=1000, output_tokens=200)
+    assert (
+        actual_micro(price, input_tokens=1000, output_tokens=200, cache_creation_tokens=0)
+        == without
+    )
+
+
+def test_model_price_allows_cache_creation_rate_above_input_rate() -> None:
+    # must NOT raise: creation legitimately costs more than standard input.
+    price = ModelPrice(
+        provider="anthropic",
+        model="claude",
+        input_micro_per_token=Decimal("2.5"),
+        output_micro_per_token=Decimal("10"),
+        cached_input_micro_per_token=Decimal("1.25"),
+        cache_creation_micro_per_token=Decimal("3.125"),
+    )
+    assert price.cache_creation_micro_per_token == Decimal("3.125")
+
+
+def test_model_price_rejects_negative_cache_creation_rate() -> None:
+    with pytest.raises(ValueError, match="non-negative"):
+        ModelPrice(
+            provider="anthropic",
+            model="claude",
+            input_micro_per_token=Decimal("2.5"),
+            output_micro_per_token=Decimal("10"),
+            cached_input_micro_per_token=Decimal("1.25"),
+            cache_creation_micro_per_token=Decimal("-1"),
+        )
+
+
+def test_actual_micro_rejects_negative_cache_creation_tokens() -> None:
+    price = ModelPrice(
+        provider="anthropic",
+        model="claude",
+        input_micro_per_token=Decimal("2.5"),
+        output_micro_per_token=Decimal("10"),
+        cached_input_micro_per_token=Decimal("1.25"),
+        cache_creation_micro_per_token=Decimal("3.125"),
+    )
+    with pytest.raises(ValueError, match="non-negative"):
+        actual_micro(price, input_tokens=100, output_tokens=0, cache_creation_tokens=-1)

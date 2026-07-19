@@ -53,6 +53,7 @@ _PRICE = ModelPrice(
     input_micro_per_token=Decimal("1"),
     output_micro_per_token=Decimal("2"),
     cached_input_micro_per_token=Decimal("0.5"),
+    cache_creation_micro_per_token=Decimal("1.25"),
 )
 _RECORD = ReservationRecord(
     reservation_id=ReservationId("res-1"),
