@@ -24,6 +24,33 @@ class Settings(BaseSettings):
         ge=1,
         description="Server-side statement timeout for the synchronous reserve path.",
     )
+    worker_statement_timeout_ms: int = Field(
+        default=30_000,
+        ge=1,
+        description=(
+            "Server-side statement timeout for reaper/worker maintenance queries, tuned "
+            "independently of the reserve hot path (a batch scan is not the 2s reserve budget)."
+        ),
+    )
+    db_pool_size: int = Field(
+        default=5, ge=1, description="Base size of the SQLAlchemy connection pool."
+    )
+    db_max_overflow: int = Field(
+        default=10, ge=0, description="Connections allowed beyond the pool size under load."
+    )
+    db_pool_timeout_seconds: float = Field(
+        default=10.0,
+        gt=0,
+        description=(
+            "Seconds to wait for a pooled connection before failing. Fail-fast under pool "
+            "exhaustion rather than SQLAlchemy's 30s default (#76)."
+        ),
+    )
+    db_connect_timeout_seconds: float = Field(
+        default=10.0,
+        gt=0,
+        description="Seconds to wait to establish a new database connection before failing.",
+    )
     reservation_ttl_seconds: int = Field(
         default=600,
         ge=1,
