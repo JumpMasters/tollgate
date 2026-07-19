@@ -21,7 +21,11 @@ dependencies = [
     "alembic>=1.18.5",
     "uvicorn>=0.51.0",
     "uuid-utils>=0.17.0",
+    "httpx>=0.28.1",
 ]
+
+[project.optional-dependencies]
+tokenizers = ["tiktoken>=0.8"]
 
 [project.urls]
 Repository = "https://github.com/JumpMasters/tollgate"
@@ -41,7 +45,6 @@ dev = [
     "import-linter>=2.13",
     "pip-audit>=2.7",
     "testcontainers[postgres]>=4.14.2",
-    "httpx>=0.28.1",
 ]
 
 [build-system]
@@ -71,6 +74,8 @@ files = ["src", "tests", "loadtest"]
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
+# tiktoken backs the optional `tokenizers` extra, not a default dependency, so it has no
+# type stubs installed in the base dev environment.
 module = ["uuid_utils.*", "testcontainers.*", "tiktoken.*"]
 ignore_missing_imports = true
 

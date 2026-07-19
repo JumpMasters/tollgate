@@ -43,6 +43,7 @@ The format follows Michael Nygard's
 - [0032 — Chargeback read wire contract](0032-chargeback-read-wire-contract.md)
 - [0033 — Chargeback spend rollups over the ledger](0033-chargeback-spend-rollups.md)
 - [0034 — Reaper execution model: polled run-once ticks reusing the command UnitOfWork](0034-reaper-execution-model.md)
+- [0035 — SDK guard enforcement contract: reserve-before-dispatch, fail-closed, pluggable tokenizer](0035-sdk-guard-enforcement-contract.md)
 
 ## Adding a record
 
