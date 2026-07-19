@@ -71,7 +71,7 @@ files = ["src", "tests", "loadtest"]
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = ["uuid_utils.*", "testcontainers.*"]
+module = ["uuid_utils.*", "testcontainers.*", "tiktoken.*"]
 ignore_missing_imports = true
 
 # --- Tests / coverage ------------------------------------------------------
