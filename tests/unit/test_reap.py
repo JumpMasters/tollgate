@@ -7,6 +7,8 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import pytest
+
 from tollgate.application.handlers.reap import (
     IdempotencyReaperHandler,
     ReapReport,
@@ -100,9 +102,14 @@ class _FakeReservations:
     ) -> datetime | None:
         raise AssertionError("the reservation reaper never advances a TTL")
 
-    async def claim_next_expired(self, now: datetime) -> StoredReservation | None:
+    async def claim_next_expired(
+        self, now: datetime, exclude_ids: Sequence[ReservationId] = ()
+    ) -> StoredReservation | None:
         self.claim_now.append(now)
-        return self._expired.pop(0) if self._expired else None
+        for i, stored in enumerate(self._expired):
+            if stored.record.reservation_id not in exclude_ids:
+                return self._expired.pop(i)
+        return None
 
 
 class _FakeCounterStore:
@@ -178,14 +185,16 @@ class _StubReserveTx:
 
 
 class _Ctx:
-    def __init__(self, reservations: _FakeReservations) -> None:
+    def __init__(
+        self, reservations: _FakeReservations, counter_store: _FakeCounterStore | None = None
+    ) -> None:
         self.prices = _StubPrices()
         self.budgets = _StubBudgets()
         self.idempotency = _StubIdempotency()
         self.reservations = reservations
         self.ledger = _FakeLedger()
         self.reserve_tx = _StubReserveTx()
-        self.counter_store = _FakeCounterStore()
+        self.counter_store = counter_store or _FakeCounterStore()
 
 
 class _Uow:
@@ -235,6 +244,93 @@ async def test_reaper_reaps_each_expired_and_releases_lines_in_lock_order() -> N
     )
     assert {e.reservation_id for e in ctx.ledger.appended} == {"r-1", "r-2"}
     assert reservations.claim_now == [_NOW, _NOW, _NOW]  # 2 claims + the empty poll that ends it
+
+
+_POISON_BUDGET = BudgetId("b-poison")
+
+
+class _PoisonCounterStore(_FakeCounterStore):
+    """release() raises for the poison node, modelling a reap that reliably fails and rolls back."""
+
+    async def release(self, budget_id: BudgetId, period_start: datetime, amount_micro: int) -> None:
+        if budget_id == _POISON_BUDGET:
+            raise RuntimeError("release times out on a hot balance row")
+        await super().release(budget_id, period_start, amount_micro)
+
+
+class _StarvingReservations(_FakeReservations):
+    """A poison reservation (oldest, reap always rolls back → stays held) ahead of healthy ones.
+
+    Models the real queue: the poison is returned first every claim UNLESS it is excluded, since
+    its rolled-back status flip leaves it held with the oldest deadline; healthy reservations are
+    consumed once reaped.
+    """
+
+    def __init__(self, poison: ReservationId, healthy: list[ReservationId]) -> None:
+        super().__init__([], lines=())
+        self._poison = poison
+        self._healthy = list(healthy)
+        self.claim_excludes: list[list[ReservationId]] = []
+
+    async def claim_next_expired(
+        self, now: datetime, exclude_ids: Sequence[ReservationId] = ()
+    ) -> StoredReservation | None:
+        self.claim_excludes.append(list(exclude_ids))
+        if self._poison not in exclude_ids:
+            return _stored(str(self._poison))
+        if self._healthy:
+            return _stored(str(self._healthy.pop(0)))
+        return None
+
+    async def find_lines(self, reservation_id: ReservationId) -> Sequence[ReservationLineView]:
+        budget = _POISON_BUDGET if reservation_id == self._poison else BudgetId("b-user")
+        return (
+            ReservationLineView(
+                node=BudgetNode(budget, ScopeKind.USER, "u1"),
+                period_start=_PERIOD,
+                amount_micro=300,
+            ),
+        )
+
+
+async def test_reaper_isolates_a_poison_reservation_and_reaps_the_rest() -> None:
+    # One reservation whose reap reliably fails must not abort the tick or starve the queue behind
+    # it: it is excluded after its failure and the healthy reservations are still reaped (#74).
+    reservations = _StarvingReservations(
+        poison=ReservationId("r-poison"),
+        healthy=[ReservationId("r-good-1"), ReservationId("r-good-2")],
+    )
+    ctx = _Ctx(reservations, counter_store=_PoisonCounterStore())
+    handler = ReservationReaperHandler(
+        uow=_Uow(ctx), clock=_ClockAt(_NOW), ids=_SeqIds(), batch_size=100
+    )
+    report = await handler.run_once()
+    assert report == ReapReport(reaped=2, failed=1)
+    # the poison is excluded on every claim after its first (failed) attempt
+    assert reservations.claim_excludes == [[], ["r-poison"], ["r-poison"], ["r-poison"]]
+    # only the two healthy reservations released their lines
+    assert ctx.counter_store.release_calls == [
+        (BudgetId("b-user"), _PERIOD, 300),
+        (BudgetId("b-user"), _PERIOD, 300),
+    ]
+    assert {e.reservation_id for e in ctx.ledger.appended} == {"r-good-1", "r-good-2"}
+
+
+async def test_reaper_propagates_a_claim_failure() -> None:
+    # A failure in the claim itself (no reservation id yet) is a datastore problem, not one poison
+    # row, so it propagates for the runner's backoff/escalation to handle (#74/#75).
+    class _ClaimFails(_FakeReservations):
+        async def claim_next_expired(
+            self, now: datetime, exclude_ids: Sequence[ReservationId] = ()
+        ) -> StoredReservation | None:
+            raise RuntimeError("datastore unreachable")
+
+    ctx = _Ctx(_ClaimFails([], lines=(_USER_LINE,)))
+    handler = ReservationReaperHandler(
+        uow=_Uow(ctx), clock=_ClockAt(_NOW), ids=_SeqIds(), batch_size=100
+    )
+    with pytest.raises(RuntimeError, match="datastore unreachable"):
+        await handler.run_once()
 
 
 async def test_reaper_stops_at_batch_size() -> None:
@@ -301,7 +397,9 @@ class _StubReservationsUntouched:
     ) -> datetime | None:
         raise AssertionError("the idempotency reaper never touches reservations")
 
-    async def claim_next_expired(self, now: datetime) -> StoredReservation | None:
+    async def claim_next_expired(
+        self, now: datetime, exclude_ids: Sequence[ReservationId] = ()
+    ) -> StoredReservation | None:
         raise AssertionError("the idempotency reaper never touches reservations")
 
 
@@ -362,7 +460,9 @@ class _IdemUow:
 async def test_idempotency_reaper_loops_batches_until_short_and_sums() -> None:
     idem = _FakeIdempotency([500, 500, 137])  # two full batches then a short one
     uow = _IdemUow(_IdemCtx(idem))
-    handler = IdempotencyReaperHandler(uow=uow, clock=_ClockAt(_NOW), ttl_hours=24, batch_size=500)
+    handler = IdempotencyReaperHandler(
+        uow=uow, clock=_ClockAt(_NOW), ttl_hours=24, batch_size=500, max_batches_per_tick=100
+    )
     deleted = await handler.run_once()
     assert deleted == 1137
     assert uow.begins == 3  # one bounded transaction per batch
@@ -374,6 +474,21 @@ async def test_idempotency_reaper_loops_batches_until_short_and_sums() -> None:
 async def test_idempotency_reaper_with_nothing_expired_stops_after_one_short_batch() -> None:
     idem = _FakeIdempotency([0])
     uow = _IdemUow(_IdemCtx(idem))
-    handler = IdempotencyReaperHandler(uow=uow, clock=_ClockAt(_NOW), ttl_hours=24, batch_size=500)
+    handler = IdempotencyReaperHandler(
+        uow=uow, clock=_ClockAt(_NOW), ttl_hours=24, batch_size=500, max_batches_per_tick=100
+    )
     assert await handler.run_once() == 0
     assert uow.begins == 1
+
+
+async def test_idempotency_reaper_caps_batches_per_tick() -> None:
+    # A backlog that never returns a short batch must not run unbounded: the tick stops after
+    # max_batches_per_tick and the next tick continues the drain, keeping shutdown graceful (#73).
+    idem = _FakeIdempotency([2, 2, 2, 2, 2])  # five full batches available
+    uow = _IdemUow(_IdemCtx(idem))
+    handler = IdempotencyReaperHandler(
+        uow=uow, clock=_ClockAt(_NOW), ttl_hours=24, batch_size=2, max_batches_per_tick=3
+    )
+    deleted = await handler.run_once()
+    assert deleted == 6  # 3 batches x 2, not all five
+    assert uow.begins == 3  # capped at max_batches_per_tick

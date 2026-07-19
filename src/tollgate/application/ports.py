@@ -135,12 +135,17 @@ class ReservationRepository(Protocol):
         """
         ...
 
-    async def claim_next_expired(self, now: datetime) -> StoredReservation | None:
+    async def claim_next_expired(
+        self, now: datetime, exclude_ids: Sequence[ReservationId] = ()
+    ) -> StoredReservation | None:
         """Atomically claim and reap the oldest held reservation past its TTL (§5.4, §5.5).
 
         Returns the reaped reservation (its ``record`` carries the provider / price-book version
         the caller stamps on the ``reap`` ledger rows), or ``None`` when no held reservation has a
-        ``ttl_deadline`` before ``now``. Concurrency-safe under multiple reapers via
+        ``ttl_deadline`` before ``now``. ``exclude_ids`` are skipped: a reservation whose reap
+        failed and rolled back this tick keeps status ``held`` and would otherwise be re-claimed
+        first every time (it has the oldest deadline), starving everything behind it — the reaper
+        excludes it so the queue head advances (#74). Concurrency-safe under multiple reapers via
         ``FOR UPDATE SKIP LOCKED``; the status flip is the exactly-once guard, so a mainline commit
         that loses the race routes to the self-heal late commit (ADR 0029).
         """
