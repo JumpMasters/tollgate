@@ -19,7 +19,6 @@ from tollgate.domain.errors import (
     BudgetNotFound,
     IdempotencyKeyReuse,
     InsufficientBudget,
-    NonPositiveEstimate,
     ScopeNotAuthorized,
     UnknownModel,
 )
@@ -393,16 +392,21 @@ async def test_reserve_denies_insufficient_budget_naming_the_binding_node() -> N
     assert uow.rolled_back is True
 
 
-async def test_reserve_denies_a_zero_worst_case_estimate() -> None:
-    # A reserve whose worst-case estimate is zero gates nothing; deny it before touching
-    # any balance, and roll back so no idempotency key is cached (#65).
+async def test_reserve_admits_a_zero_estimate_with_a_zero_hold() -> None:
+    # A genuinely free (zero-priced) model or a zero-token request estimates to 0. Rather than 4xx,
+    # admit it with a zero-micro hold so free and paid models route through the same guard; the
+    # reserve walks every node at amount 0 and commit later reconciles to 0 (#104).
     handler, uow = _build()
-    with pytest.raises(NonPositiveEstimate):
-        await handler.reserve(_auth(), _command(input_bound_tokens=0, max_output_tokens=0))
-    assert uow._ctx.reserve_tx.calls == []  # never reached the balance guard
-    assert uow._ctx.reservations.inserted is None
-    assert uow._ctx.idempotency.stored == []
-    assert uow.rolled_back is True
+    result = await handler.reserve(_auth(), _command(input_bound_tokens=0, max_output_tokens=0))
+    assert result.estimated_micro == 0
+    ctx = uow._ctx
+    assert ctx.reserve_tx.calls == [([_ORG_NODE, _USER_NODE], _PERIOD, 0)]  # zero-hold guard walk
+    assert ctx.reservations.inserted is not None
+    record, lines = ctx.reservations.inserted
+    assert record.estimated_micro == 0
+    assert all(line.amount_micro == 0 for line in lines)
+    assert ctx.idempotency.stored != []  # a success caches its response
+    assert uow.rolled_back is False
 
 
 async def test_reserve_includes_an_authorized_project_budget() -> None:

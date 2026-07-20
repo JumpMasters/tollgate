@@ -30,7 +30,6 @@ from tollgate.domain.credentials import Principal
 from tollgate.domain.errors import (
     IdempotencyKeyReuse,
     InsufficientBudget,
-    NonPositiveEstimate,
     TollgateError,
     UnknownModel,
 )
@@ -137,15 +136,15 @@ class ReserveHandler:
 
             nodes = await resolve_applicable_nodes(tx.budgets, auth, command.project_id)
 
+            # A zero estimate (a genuinely free, zero-priced model, or a zero-token request) is
+            # admitted with a zero-micro hold rather than rejected, so free and paid models transit
+            # the same guard; the reserve walks every node at amount 0 and commit reconciles to 0
+            # (#104). ``estimate_micro`` never returns negative, so estimate >= 0 always holds.
             estimate = estimate_micro(
                 priced.price,
                 input_bound_tokens=command.input_bound_tokens,
                 max_output_tokens=command.max_output_tokens,
             )
-            if estimate == 0:
-                raise NonPositiveEstimate(
-                    "worst-case estimate is zero; a reserve must gate a positive amount"
-                )
             now = self._clock.now()
             period_start = calendar_month_start(now)
             ttl_deadline = now + timedelta(seconds=self._ttl_seconds)

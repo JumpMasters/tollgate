@@ -11,7 +11,6 @@ from tollgate.domain.errors import (
     EnforcementUnavailable,
     IdempotencyKeyReuse,
     InsufficientBudget,
-    NonPositiveEstimate,
     ReservationNotHeld,
     ScopeNotAuthorized,
     TollgateError,
@@ -31,7 +30,6 @@ def test_every_error_descends_from_base() -> None:
         AuthenticationFailed,
         ScopeNotAuthorized,
         AmountOutOfRange,
-        NonPositiveEstimate,
         BalanceGuardViolation,
     ):
         assert issubclass(exc, TollgateError)
