@@ -49,7 +49,7 @@ class TollgateMeteringCallback(CustomLogger):
                 provider=provider,
                 model=model,
                 usage=usage,
-                idempotency_key=_idempotency_key(response_obj, kwargs),
+                idempotency_key=_idempotency_key(response_obj, kwargs, truncated=False),
                 labels=_extract_labels(kwargs),
                 truncated=False,
             )
@@ -73,7 +73,7 @@ class TollgateMeteringCallback(CustomLogger):
                 provider=provider,
                 model=model,
                 usage=usage,
-                idempotency_key=_idempotency_key(response_obj, kwargs),
+                idempotency_key=_idempotency_key(response_obj, kwargs, truncated=True),
                 labels=_extract_labels(kwargs),
                 truncated=True,
             )
@@ -125,14 +125,18 @@ def _map_usage(usage: dict[str, Any]) -> ProviderUsage:
         usage.get("cache_creation_input_tokens")
     )
     # Relies on litellm's prompt_tokens being the SUM of raw + cache-read + cache-creation, so
-    # subtracting creation still leaves the cache-read subset in input_tokens and Tollgate's
-    # cached_input_tokens <= input_tokens invariant holds. If a future litellm/provider stops
-    # summing this way, the server rejects the meter and the failure is logged-and-swallowed
-    # above (no host-app break).
+    # subtracting creation leaves the cache-read subset inside input_tokens (ADR 0036).
+    input_tokens = max(prompt_tokens - cache_creation, 0)
+    # Clamp cache-read to input_tokens. cached is a subset of input by Tollgate's convention, but
+    # under litellm/provider field skew the two counts can come from different accounting and the
+    # reported cache-read can exceed the derived input. Emitting cached > input would trip the
+    # server's `cached <= input` validator (422) and the whole meter would be swallowed above,
+    # losing the spend (#103); a clamp keeps the split valid and books the spend.
+    cached_input = min(cache_read, input_tokens)
     return ProviderUsage(
-        input_tokens=max(prompt_tokens - cache_creation, 0),
+        input_tokens=input_tokens,
         output_tokens=completion_tokens,
-        cached_input_tokens=cache_read,
+        cached_input_tokens=cached_input,
         cache_creation_tokens=cache_creation,
     )
 
@@ -168,16 +172,24 @@ def _extract_labels(kwargs: dict[str, Any]) -> dict[str, str]:
     return {str(key): str(value) for key, value in tollgate_labels.items()}
 
 
-def _idempotency_key(response_obj: Any, kwargs: dict[str, Any]) -> str:
+def _idempotency_key(response_obj: Any, kwargs: dict[str, Any], *, truncated: bool) -> str:
     """A stable metering key derived from the response id (retries meter under the same key).
 
     Falls back to litellm's per-call id, then a random key only when no stable id exists.
+
+    The success (``truncated=False``) and failure (``truncated=True``) hooks of one call can derive
+    the same response id, but the server folds ``truncated`` into the meter fingerprint — so a
+    shared key with a differing fingerprint is rejected 409 and swallowed, dropping the
+    authoritative success meter in failure-then-success ordering (#103). Folding the hook
+    discriminator into the key keeps the two hooks distinct while a retry *within* a hook still
+    dedups. The success key format is left unchanged (no suffix) for backward compatibility.
     """
     response_id = getattr(response_obj, "id", None)
     if response_id is None and isinstance(response_obj, dict):
         response_id = response_obj.get("id")
     if response_id is None:
         response_id = kwargs.get("litellm_call_id") or kwargs.get("id")
+    suffix = "-truncated" if truncated else ""
     if response_id:
-        return f"litellm-meter-{response_id}"
-    return f"litellm-meter-{uuid4().hex}"
+        return f"litellm-meter-{response_id}{suffix}"
+    return f"litellm-meter-{uuid4().hex}{suffix}"

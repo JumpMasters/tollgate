@@ -301,6 +301,69 @@ async def test_reads_usage_and_id_from_dict_response_obj() -> None:
     assert client.calls[0]["idempotency_key"] == "litellm-meter-resp-dict"
 
 
+async def test_cache_read_is_clamped_to_input_tokens() -> None:
+    # litellm/provider field skew can report a cache-read count that exceeds the derived
+    # input_tokens (= prompt_tokens - cache_creation). Emitting cached > input would trip the
+    # server's `cached <= input` validator (422) and the callback would swallow the whole meter,
+    # losing the spend (#103). The callback clamps cached_input to input_tokens instead.
+    client = _FakeClient()
+    callback = _callback(client)
+    # prompt=100, creation=80 -> input_tokens=20; reported cache-read=90 exceeds it.
+    usage = _usage(prompt=100, completion=10, cached=90, creation=80)
+    await callback.async_log_success_event(
+        kwargs=_kwargs(),
+        response_obj=_response(usage),
+        start_time=_START,
+        end_time=_END,
+    )
+    metered = client.calls[0]["usage"]
+    assert metered.input_tokens == 20
+    assert metered.cached_input_tokens == 20  # clamped down from 90
+    assert metered.cached_input_tokens <= metered.input_tokens  # never emit an invalid split
+
+
+async def test_success_and_failure_meters_of_one_call_use_distinct_keys() -> None:
+    # A failure meter (truncated=True) and a success meter (truncated=False) of the SAME call
+    # previously shared one derived key but carried different fingerprints (truncated is folded
+    # into the meter fingerprint), so the second was rejected 409 idempotency_key_reuse and
+    # swallowed — dropping the authoritative success meter in failure-then-success ordering (#103).
+    client = _FakeClient()
+    callback = _callback(client)
+    usage = _usage(prompt=200, completion=5)
+    await callback.async_log_failure_event(
+        kwargs=_kwargs(),
+        response_obj=_response(usage, id="chatcmpl-same"),
+        start_time=_START,
+        end_time=_END,
+    )
+    await callback.async_log_success_event(
+        kwargs=_kwargs(),
+        response_obj=_response(usage, id="chatcmpl-same"),
+        start_time=_START,
+        end_time=_END,
+    )
+    failure_key = client.calls[0]["idempotency_key"]
+    success_key = client.calls[1]["idempotency_key"]
+    assert failure_key != success_key  # no cross-hook collision
+
+
+async def test_failure_idempotency_key_is_stable_across_retries() -> None:
+    # A retry of the same failure event still dedups (same key), so the durable exactly-once
+    # property is preserved within a hook.
+    client = _FakeClient()
+    callback = _callback(client)
+    usage = _usage(prompt=200, completion=5)
+    for _ in range(2):
+        await callback.async_log_failure_event(
+            kwargs=_kwargs(),
+            response_obj=_response(usage, id="chatcmpl-fail"),
+            start_time=_START,
+            end_time=_END,
+        )
+    keys = {call["idempotency_key"] for call in client.calls}
+    assert len(keys) == 1
+
+
 async def test_idempotency_key_falls_back_when_no_id_available() -> None:
     client = _FakeClient()
     callback = _callback(client)
