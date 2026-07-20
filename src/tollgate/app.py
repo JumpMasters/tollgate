@@ -29,6 +29,7 @@ from tollgate.application.handlers.cancel import CancelHandler
 from tollgate.application.handlers.commit import CommitHandler
 from tollgate.application.handlers.extend import ExtendHandler
 from tollgate.application.handlers.grace import GraceBackfillHandler
+from tollgate.application.handlers.meter import MeterHandler
 from tollgate.application.handlers.read import ChargebackHandler
 from tollgate.application.handlers.reap import IdempotencyReaperHandler, ReservationReaperHandler
 from tollgate.application.handlers.reserve import ReserveHandler
@@ -98,6 +99,7 @@ def build_app(settings: Settings | None = None) -> FastAPI:
         reservation_ttl_seconds=settings.reservation_ttl_seconds,
     )
     app.state.grace_backfill_handler = GraceBackfillHandler(uow=uow, clock=clock, ids=ids)
+    app.state.meter_handler = MeterHandler(uow=uow, clock=clock, ids=ids)
     app.state.chargeback_handler = ChargebackHandler(
         reader=PostgresChargebackReader(engine), clock=clock
     )

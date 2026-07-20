@@ -25,6 +25,8 @@ from tollgate.api.schemas import (
     ExtendResponse,
     GraceBackfillRequest,
     GraceBackfillResponse,
+    MeterRequest,
+    MeterResponse,
     ReserveRequest,
     ReserveResponse,
     UsageBody,
@@ -33,12 +35,14 @@ from tollgate.application.handlers.cancel import CancelHandler
 from tollgate.application.handlers.commit import CommitHandler
 from tollgate.application.handlers.extend import ExtendHandler
 from tollgate.application.handlers.grace import GraceBackfillHandler
+from tollgate.application.handlers.meter import MeterHandler
 from tollgate.application.handlers.reserve import ReserveHandler
 from tollgate.domain.commands import (
     CancelCommand,
     CommitCommand,
     ExtendCommand,
     GraceBackfillCommand,
+    MeterCommand,
     ProviderUsage,
     ReserveCommand,
 )
@@ -170,4 +174,28 @@ async def grace_backfill(
     return GraceBackfillResponse(
         actual_micro=result.actual_micro,
         price_book_version=result.price_book_version,
+    )
+
+
+@router.post("/meter", responses=_ERROR_RESPONSES)
+async def meter(
+    request: Request,
+    body: MeterRequest,
+    auth: RequestAuth,
+    idempotency_key: IdempotencyKey,
+) -> MeterResponse:
+    """Record already-incurred, provider-reported spend; never denies (section 6, ADR 0037)."""
+    handler: MeterHandler = request.app.state.meter_handler
+    command = MeterCommand(
+        idempotency_key=idempotency_key,
+        provider=body.provider,
+        model=body.model,
+        usage=_usage(body.usage),
+        labels=body.labels,
+        project_id=None if body.project_id is None else ProjectId(body.project_id),
+        truncated=body.truncated,
+    )
+    result = await handler.meter(auth, command)
+    return MeterResponse(
+        actual_micro=result.actual_micro, price_book_version=result.price_book_version
     )
