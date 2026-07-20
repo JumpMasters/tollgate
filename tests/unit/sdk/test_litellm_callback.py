@@ -2,8 +2,9 @@
 
 These tests build realistic litellm ``kwargs``/``response_obj`` payloads (litellm 1.93 shapes)
 and inject a fake :class:`TollgateClient` recording every ``meter`` call. The callback maps
-litellm's usage to Tollgate's disjoint token convention (ADR 0036), forwards call metadata as
-labels, derives a stable idempotency key from the response id, and never lets a metering error
+litellm's usage to Tollgate's disjoint token convention (ADR 0036), reads chargeback labels ONLY
+from the dedicated ``metadata["tollgate_labels"]`` namespace (never litellm-internal metadata
+keys), derives a stable idempotency key from the response id, and never lets a metering error
 escape into the host application.
 """
 
@@ -85,7 +86,7 @@ async def test_success_meters_with_disjoint_mapping_and_labels() -> None:
     callback = _callback(client)
     usage = _usage(prompt=1100, completion=50, cached=300, creation=100)
     await callback.async_log_success_event(
-        kwargs=_kwargs(metadata={"team": "research", "env": "prod"}),
+        kwargs=_kwargs(metadata={"tollgate_labels": {"team": "research", "env": "prod"}}),
         response_obj=_response(usage),
         start_time=_START,
         end_time=_END,
@@ -221,18 +222,62 @@ async def test_failure_hook_swallows_meter_error() -> None:
     assert len(client.calls) == 1  # it tried, then swallowed
 
 
-async def test_labels_coerce_scalar_metadata_and_drop_nested() -> None:
+async def test_labels_coerce_tollgate_labels_keys_and_values_to_str() -> None:
     client = _FakeClient()
     callback = _callback(client)
-    metadata = {"team": "research", "attempt": 3, "sampled": True, "trace": {"nested": "dropped"}}
+    metadata = {"tollgate_labels": {"team": "research", "attempt": 3, "sampled": True}}
     await callback.async_log_success_event(
         kwargs=_kwargs(metadata=metadata),
         response_obj=_response(_usage(prompt=10, completion=5)),
         start_time=_START,
         end_time=_END,
     )
-    # Scalars are stringified; nested/complex values are dropped.
+    # Keys and values under tollgate_labels are stringified.
     assert client.calls[0]["labels"] == {"team": "research", "attempt": "3", "sampled": "True"}
+
+
+async def test_labels_isolate_tollgate_labels_from_litellm_internal_metadata() -> None:
+    """Litellm-internal metadata keys (proxy/router bookkeeping) must never leak into labels."""
+    client = _FakeClient()
+    callback = _callback(client)
+    metadata = {
+        "tollgate_labels": {"env": "prod", "team": "x"},
+        "user_api_key_alias": "internal-key-alias",
+        "model_group": "internal-model-group",
+    }
+    await callback.async_log_success_event(
+        kwargs=_kwargs(metadata=metadata),
+        response_obj=_response(_usage(prompt=10, completion=5)),
+        start_time=_START,
+        end_time=_END,
+    )
+    assert client.calls[0]["labels"] == {"env": "prod", "team": "x"}
+
+
+async def test_labels_are_empty_when_tollgate_labels_absent() -> None:
+    client = _FakeClient()
+    callback = _callback(client)
+    metadata = {"user_api_key_alias": "internal-key-alias", "model_group": "internal-model-group"}
+    await callback.async_log_success_event(
+        kwargs=_kwargs(metadata=metadata),
+        response_obj=_response(_usage(prompt=10, completion=5)),
+        start_time=_START,
+        end_time=_END,
+    )
+    assert client.calls[0]["labels"] == {}
+
+
+async def test_labels_are_empty_when_tollgate_labels_not_a_mapping() -> None:
+    client = _FakeClient()
+    callback = _callback(client)
+    metadata = {"tollgate_labels": "not-a-mapping"}
+    await callback.async_log_success_event(
+        kwargs=_kwargs(metadata=metadata),
+        response_obj=_response(_usage(prompt=10, completion=5)),
+        start_time=_START,
+        end_time=_END,
+    )
+    assert client.calls[0]["labels"] == {}
 
 
 async def test_reads_usage_and_id_from_dict_response_obj() -> None:

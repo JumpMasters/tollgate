@@ -124,6 +124,11 @@ def _map_usage(usage: dict[str, Any]) -> ProviderUsage:
     cache_creation = _int(details.get("cache_creation_tokens")) or _int(
         usage.get("cache_creation_input_tokens")
     )
+    # Relies on litellm's prompt_tokens being the SUM of raw + cache-read + cache-creation, so
+    # subtracting creation still leaves the cache-read subset in input_tokens and Tollgate's
+    # cached_input_tokens <= input_tokens invariant holds. If a future litellm/provider stops
+    # summing this way, the server rejects the meter and the failure is logged-and-swallowed
+    # above (no host-app break).
     return ProviderUsage(
         input_tokens=max(prompt_tokens - cache_creation, 0),
         output_tokens=completion_tokens,
@@ -145,16 +150,22 @@ def _extract_provider_model(kwargs: dict[str, Any]) -> tuple[str, str]:
 
 
 def _extract_labels(kwargs: dict[str, Any]) -> dict[str, str]:
-    """Forward scalar call metadata as string labels (nested/complex values are dropped)."""
+    """Read chargeback labels ONLY from the dedicated ``metadata["tollgate_labels"]`` namespace.
+
+    litellm's call metadata (``kwargs["metadata"]`` / ``kwargs["litellm_params"]["metadata"]``) is
+    shared with litellm-internal bookkeeping (e.g. ``user_api_key_alias``, ``model_group`` on the
+    proxy/router path), so forwarding it wholesale would leak those keys into chargeback labels.
+    Callers opt a value into labels explicitly by nesting it under ``tollgate_labels``, e.g.
+    ``litellm.acompletion(..., metadata={"tollgate_labels": {"env": "prod", "team": "x"}})``. Every
+    other metadata key is ignored. Keys and values are coerced to ``str``; if ``tollgate_labels`` is
+    absent or not a mapping, no labels are recorded.
+    """
     litellm_params = _as_mapping(kwargs.get("litellm_params"))
     merged = {**_as_mapping(kwargs.get("metadata")), **_as_mapping(litellm_params.get("metadata"))}
-    labels: dict[str, str] = {}
-    for key, value in merged.items():
-        if isinstance(value, str):
-            labels[str(key)] = value
-        elif isinstance(value, bool | int | float):
-            labels[str(key)] = str(value)
-    return labels
+    tollgate_labels = merged.get("tollgate_labels")
+    if not isinstance(tollgate_labels, dict):
+        return {}
+    return {str(key): str(value) for key, value in tollgate_labels.items()}
 
 
 def _idempotency_key(response_obj: Any, kwargs: dict[str, Any]) -> str:
