@@ -62,6 +62,36 @@ async def test_resolve_price_takes_the_latest_published_version(db_conn: AsyncCo
     assert priced.price.cached_input_micro_per_token == Decimal("1.5")
 
 
+async def test_resolve_price_breaks_a_published_at_tie_deterministically(
+    db_conn: AsyncConnection,
+) -> None:
+    # published_at defaults to the transaction timestamp, so a bulk seed publishes several versions
+    # with the SAME published_at. Ordering by published_at alone then leaves an arbitrary pick that
+    # can differ run to run; version is the deterministic tiebreak so "latest published" is a total
+    # order (#98). The stamped version drives commit reconciliation, so it must not be ambiguous.
+    same_instant = datetime(2026, 6, 1, tzinfo=UTC)
+    await _publish(
+        db_conn,
+        version="v-a",
+        published_at=same_instant,
+        input_rate="1",
+        output_rate="2",
+        cached_rate="0.5",
+    )
+    await _publish(
+        db_conn,
+        version="v-b",
+        published_at=same_instant,
+        input_rate="3",
+        output_rate="4",
+        cached_rate="1.5",
+    )
+    priced = await PostgresPriceBookRepository(db_conn).resolve_price("anthropic", "claude")
+    assert priced is not None
+    assert priced.version == "v-b"  # highest version wins the tie, deterministically
+    assert priced.price.input_micro_per_token == Decimal("3")
+
+
 async def test_resolve_price_returns_none_for_an_unpriced_pair(db_conn: AsyncConnection) -> None:
     await _publish(
         db_conn,

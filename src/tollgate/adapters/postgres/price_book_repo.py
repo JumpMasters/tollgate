@@ -1,9 +1,10 @@
 """PostgresPriceBookRepository: resolve the current price for a (provider, model) (§3, ADR 0028).
 
-The current price-book version is the one with the latest ``published_at`` (ADR 0028). A single
-join from ``price`` to ``price_book``, filtered to the pair and ordered by ``published_at``
-descending, takes that version and its rates — or returns ``None`` when the pair is unpriced, which
-the reserve turns into an ``UnknownModel`` denial. Explicit async SQLAlchemy Core, no ORM; like the
+The current price-book version is the one with the latest ``published_at`` (ADR 0028), with
+``version`` as a deterministic tiebreak when several versions share a ``published_at`` (#98). A
+single join from ``price`` to ``price_book``, filtered to the pair and ordered by that total
+order descending, takes the current version and its rates — or returns ``None`` when the pair is
+unpriced, which the reserve turns into an ``UnknownModel`` denial. Explicit async SQLAlchemy Core, no ORM; like the
 other repositories it never imports ``application`` and satisfies the port structurally.
 """
 
@@ -39,7 +40,11 @@ class PostgresPriceBookRepository:
                     price.join(price_book, price.c.price_book_version == price_book.c.version)
                 )
                 .where(price.c.provider == provider, price.c.model == model)
-                .order_by(price_book.c.published_at.desc())
+                # version is a deterministic tiebreak: published_at defaults to the transaction
+                # timestamp, so a bulk seed publishes several versions at the same instant and
+                # published_at alone leaves an arbitrary, run-varying pick — but the resolved
+                # version is stamped on the reservation and drives commit reconciliation (#98).
+                .order_by(price_book.c.published_at.desc(), price_book.c.version.desc())
                 .limit(1)
             )
         ).first()

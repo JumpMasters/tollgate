@@ -73,7 +73,6 @@ _BY_CODE: dict[str, type[TollgateApiError]] = {
     "reservation_not_held": ReservationNotHeld,
     "unknown_model": UnknownModel,
     "amount_out_of_range": InvalidRequest,
-    "non_positive_estimate": InvalidRequest,
     "enforcement_unavailable": EnforcementUnavailable,
     "internal_error": InternalError,
     "conflicting_budget_scope": InternalError,

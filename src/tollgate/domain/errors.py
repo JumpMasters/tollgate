@@ -34,16 +34,6 @@ class BudgetNotFound(TollgateError):
     """No budget governs the requested scope."""
 
 
-class NonPositiveEstimate(TollgateError):
-    """A reserve's worst-case estimate is zero, so it would gate nothing.
-
-    A budget is only real if a reserve can stop the request that would breach it; an
-    estimate of zero consumes no headroom and admits a call whose entire cost then books
-    as unguarded overage. Such a reserve is denied so callers cannot under-declare their
-    bounds past the gate (§4, ADR 0003 caller-declared-bounds trust model).
-    """
-
-
 class BalanceGuardViolation(TollgateError):
     """A guarded balance mutation matched a number of rows other than one.
 

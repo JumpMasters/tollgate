@@ -26,7 +26,6 @@ from tollgate.domain.errors import (
     EnforcementUnavailable,
     IdempotencyKeyReuse,
     InsufficientBudget,
-    NonPositiveEstimate,
     ReservationNotHeld,
     ScopeNotAuthorized,
     TollgateError,
@@ -65,7 +64,6 @@ _MAPPING: Final[dict[type[TollgateError], tuple[int, str, str]]] = {
     ReservationNotHeld: (409, "reservation_not_held", "reservation is not held"),
     UnknownModel: (422, "unknown_model", "unknown (provider, model) pair"),
     AmountOutOfRange: (422, "amount_out_of_range", "amount out of representable range"),
-    NonPositiveEstimate: (422, "non_positive_estimate", "reserve estimate must be positive"),
     BalanceGuardViolation: (500, "balance_guard_violation", "balance guard matched no row"),
     ConflictingBudgetScope: (
         500,
