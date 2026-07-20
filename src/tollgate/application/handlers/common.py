@@ -13,7 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Sequence
-from typing import Any, Final
+from typing import Any
 
 from tollgate.application.auth import AuthContext, require_scope
 from tollgate.application.ports import BudgetRepository, ReservationRepository
@@ -26,11 +26,6 @@ from tollgate.domain.scopes import (
     lock_order_key,
     resolve_applicable_set,
 )
-
-#: The idempotency-row status stored with a cached success (§5.1). Only successes are cached —
-#: every denial rolls its transaction back — so this is the only status the handlers write; one
-#: constant keeps the five call sites from drifting.
-RESPONSE_SUCCEEDED: Final[str] = "succeeded"
 
 
 def command_fingerprint(payload: dict[str, Any]) -> str:

@@ -112,15 +112,15 @@ class _FakeIdempotency:
         self, outcome: ClaimOutcome = ClaimOutcome.FRESH, response: Mapping[str, Any] | None = None
     ) -> None:
         self._claim = IdempotencyClaim(outcome, response=response)
-        self.stored: list[tuple[str, str, str, dict[str, Any]]] = []
+        self.stored: list[tuple[str, str, dict[str, Any]]] = []
 
     async def claim(self, principal_id: str, key: str, fingerprint: str) -> IdempotencyClaim:
         return self._claim
 
     async def store_response(
-        self, principal_id: str, key: str, status: str, response: Mapping[str, Any]
+        self, principal_id: str, key: str, response: Mapping[str, Any]
     ) -> None:
-        self.stored.append((principal_id, key, status, dict(response)))
+        self.stored.append((principal_id, key, dict(response)))
 
     async def delete_expired(self, cutoff: datetime, limit: int) -> int:
         raise AssertionError("this handler never reaps keys")
@@ -351,7 +351,6 @@ async def test_commit_reconciles_and_persists_the_envelope() -> None:
         (
             "u1",
             "idem-commit",
-            "succeeded",
             {"reservation_id": "res-1", "committed_micro": _ACTUAL, "overage_micro": 0},
         )
     ]

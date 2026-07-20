@@ -211,7 +211,7 @@ async def test_commit_reconciles_and_persists_the_envelope(
     assert await _scalar(committing_engine, "SELECT count(*) FROM ledger WHERE kind='overage'") == 0
     assert (
         await _scalar(
-            committing_engine, "SELECT count(*) FROM idempotency_key WHERE status='succeeded'"
+            committing_engine, "SELECT count(*) FROM idempotency_key WHERE response IS NOT NULL"
         )
         == 2
     )  # the reserve and the commit

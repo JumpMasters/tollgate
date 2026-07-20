@@ -100,16 +100,16 @@ class _FakeIdempotency:
     ) -> None:
         self._claim = IdempotencyClaim(outcome, response=response)
         self.claimed: tuple[str, str, str] | None = None
-        self.stored: list[tuple[str, str, str, dict[str, Any]]] = []
+        self.stored: list[tuple[str, str, dict[str, Any]]] = []
 
     async def claim(self, principal_id: str, key: str, fingerprint: str) -> IdempotencyClaim:
         self.claimed = (principal_id, key, fingerprint)
         return self._claim
 
     async def store_response(
-        self, principal_id: str, key: str, status: str, response: Mapping[str, Any]
+        self, principal_id: str, key: str, response: Mapping[str, Any]
     ) -> None:
-        self.stored.append((principal_id, key, status, dict(response)))
+        self.stored.append((principal_id, key, dict(response)))
 
     async def delete_expired(self, cutoff: datetime, limit: int) -> int:
         raise AssertionError("this handler never reaps keys")
@@ -326,7 +326,6 @@ async def test_reserve_succeeds_and_persists_the_envelope() -> None:
         (
             "u1",
             "idem-1",
-            "succeeded",
             {
                 "reservation_id": "res-1",
                 "estimated_micro": _ESTIMATE,

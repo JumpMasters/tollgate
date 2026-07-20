@@ -27,7 +27,7 @@ async def test_claim_same_key_same_fingerprint_replays_stored_response(
 ) -> None:
     repo = PostgresIdempotencyRepository(db_conn)
     await repo.claim("p1", "k1", "fp-1")
-    await repo.store_response("p1", "k1", "succeeded", {"reservation_id": "r1"})
+    await repo.store_response("p1", "k1", {"reservation_id": "r1"})
     claim = await repo.claim("p1", "k1", "fp-1")
     assert claim.outcome is ClaimOutcome.REPLAY
     assert claim.response == {"reservation_id": "r1"}
@@ -39,7 +39,7 @@ async def test_store_response_on_an_unclaimed_key_fails_loud(db_conn: AsyncConne
     # and raising beats silently dropping the response and leaving a keyless success (#107).
     repo = PostgresIdempotencyRepository(db_conn)
     with pytest.raises(TollgateError):
-        await repo.store_response("p1", "never-claimed", "succeeded", {"x": 1})
+        await repo.store_response("p1", "never-claimed", {"x": 1})
 
 
 async def test_claim_same_key_different_fingerprint_is_mismatch(db_conn: AsyncConnection) -> None:

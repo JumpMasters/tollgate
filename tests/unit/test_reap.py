@@ -169,7 +169,7 @@ class _StubIdempotency:
         raise AssertionError("the reservation reaper never claims idempotency keys")
 
     async def store_response(
-        self, principal_id: str, key: str, status: str, response: Mapping[str, Any]
+        self, principal_id: str, key: str, response: Mapping[str, Any]
     ) -> None:
         raise AssertionError("the reservation reaper never claims idempotency keys")
 
@@ -411,7 +411,7 @@ class _FakeIdempotency:
         raise AssertionError("the idempotency reaper never claims a key")
 
     async def store_response(
-        self, principal_id: str, key: str, status: str, response: Mapping[str, Any]
+        self, principal_id: str, key: str, response: Mapping[str, Any]
     ) -> None:
         raise AssertionError("the idempotency reaper never stores a response")
 
