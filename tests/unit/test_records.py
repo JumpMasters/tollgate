@@ -92,14 +92,16 @@ def test_idempotency_claim_without_a_response_stays_none() -> None:
 
 def test_ledger_entry_carries_model_and_read_only_labels() -> None:
     # LedgerKind.METER is added in Task 2; RESERVE exercises the same model/labels fields here.
+    src = {"env": "prod"}
     entry = LedgerEntry(
         entry_id=LedgerEntryId("e1"),
         kind=LedgerKind.RESERVE,
         budget_id=BudgetId("b1"),
         period_start=datetime(2026, 7, 1, tzinfo=UTC),
         model="claude",
-        labels={"env": "prod"},
+        labels=src,
     )
+    src["env"] = "dev"  # mutating the caller's dict must not leak in (#78)
     assert entry.model == "claude"
     assert entry.labels == {"env": "prod"}
     with pytest.raises(TypeError):
