@@ -11,7 +11,7 @@ from uuid import uuid4
 
 from tollgate.adapters.integrations.sdk.client import ProviderUsage, TollgateClient
 from tollgate.adapters.integrations.sdk.config import SdkConfig
-from tollgate.adapters.integrations.sdk.errors import InvalidRequest
+from tollgate.adapters.integrations.sdk.errors import EnforcementUnavailable, InvalidRequest
 from tollgate.adapters.integrations.sdk.tokenizer import Tokenizer, input_bound_tokens
 
 logger = logging.getLogger(__name__)
@@ -73,6 +73,60 @@ async def _stop(task: asyncio.Task[None] | None) -> None:
         await task
 
 
+async def _finalize(
+    client: TollgateClient,
+    call: GuardedCall,
+    *,
+    provider: str,
+    model: str,
+    project: str | None,
+    labels: dict[str, str] | None,
+    new_key: Callable[[], str],
+) -> None:
+    """Resolve the reservation on exit: commit recorded usage, else cancel (section 4, 5.4).
+
+    Recorded usage is real, provider-billed spend, so it is always committed — even when the body
+    raised after ``record_usage`` (#94); only a call that consumed nothing is cancelled.
+
+    A commit that fails *transiently* (``EnforcementUnavailable`` — the control plane blipped or
+    is unreachable) must not strand the reservation for the TTL reaper to release, which would
+    silently under-charge the real spend (#93). It falls back to a durable ``meter`` under a
+    deterministic, retry-safe key, biasing to the safe direction for a spend-control plane: the
+    reaper later releases the now-redundant estimate, so at worst spend is momentarily over-counted
+    rather than lost. The fallback is scoped to ``EnforcementUnavailable`` on purpose — a *definite*
+    rejection (e.g. the reservation already settled) is not a blip, and metering it again could
+    double-charge, so it propagates. Only if the meter fallback *also* fails does the typed commit
+    error surface, so the caller learns the spend went unrecorded instead of assuming success.
+    """
+    usage = call.usage
+    if usage is None:
+        await client.cancel(reservation_id=call.reservation_id, idempotency_key=new_key())
+        return
+    try:
+        await client.commit(
+            reservation_id=call.reservation_id, usage=usage, idempotency_key=new_key()
+        )
+    except EnforcementUnavailable as commit_error:
+        logger.warning(
+            "commit unavailable for %s; recording spend via meter fallback", call.reservation_id
+        )
+        try:
+            await client.meter(
+                provider=provider,
+                model=model,
+                usage=usage,
+                idempotency_key=f"commit-fallback-{call.reservation_id}",
+                project=project,
+                labels=labels,
+            )
+        except Exception:
+            logger.error(
+                "commit and meter fallback both failed for %s; real spend was not recorded",
+                call.reservation_id,
+            )
+            raise commit_error from None
+
+
 @asynccontextmanager
 async def guard(
     client: TollgateClient,
@@ -93,8 +147,9 @@ async def guard(
 
     A denied reserve (``BudgetDenied``/``NotAuthorized``) or an unreachable control plane
     (``EnforcementUnavailable``, fail-closed) raises *before* the body runs, so the model call
-    never dispatches. On exit the reservation is always resolved: commit the recorded usage on a
-    clean exit, otherwise cancel (the body raised, or the caller recorded no usage).
+    never dispatches. On exit the reservation is always resolved by :func:`_finalize`: recorded
+    usage is real, provider-billed spend and is committed whether the body exited cleanly or
+    raised; only a call that recorded no usage is cancelled.
 
     ``new_key`` must return a fresh value on every call: reserve (when no explicit
     ``idempotency_key`` is given), commit, and cancel each call it once, and a constant generator
@@ -129,14 +184,27 @@ async def guard(
         yield call
     except BaseException:
         await _stop(heartbeat)
+        # Best-effort on the failure path: resolving the reservation must never mask the body
+        # exception the caller is already handling.
         with contextlib.suppress(Exception):
-            await client.cancel(reservation_id=call.reservation_id, idempotency_key=new_key())
+            await _finalize(
+                client,
+                call,
+                provider=provider,
+                model=model,
+                project=project,
+                labels=labels,
+                new_key=new_key,
+            )
         raise
     else:
         await _stop(heartbeat)
-        if call.usage is not None:
-            await client.commit(
-                reservation_id=call.reservation_id, usage=call.usage, idempotency_key=new_key()
-            )
-        else:
-            await client.cancel(reservation_id=call.reservation_id, idempotency_key=new_key())
+        await _finalize(
+            client,
+            call,
+            provider=provider,
+            model=model,
+            project=project,
+            labels=labels,
+            new_key=new_key,
+        )
