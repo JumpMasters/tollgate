@@ -13,6 +13,7 @@ def test_public_symbols_are_exported() -> None:
         "Tokenizer",
         "HeuristicTokenizer",
         "ProviderUsage",
+        "MeterResult",
         "EnforcementUnavailable",
         "BudgetDenied",
     ):

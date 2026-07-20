@@ -95,6 +95,17 @@ class GraceBackfillRequest(_RequestModel):
     project_id: str | None = Field(default=None, min_length=1, max_length=MAX_STR_LEN)
 
 
+class MeterRequest(_RequestModel):
+    """Body of ``POST /v1/meter``."""
+
+    provider: str = Field(min_length=1, max_length=MAX_STR_LEN)
+    model: str = Field(min_length=1, max_length=MAX_STR_LEN)
+    usage: UsageBody
+    labels: dict[_LabelKey, _LabelValue] = Field(default_factory=dict, max_length=MAX_LABELS)
+    project_id: str | None = Field(default=None, min_length=1, max_length=MAX_STR_LEN)
+    truncated: bool = False
+
+
 class ReserveResponse(BaseModel):
     """Success body of ``POST /v1/reserve``."""
 
@@ -128,6 +139,13 @@ class ExtendResponse(BaseModel):
 
 class GraceBackfillResponse(BaseModel):
     """Success body of ``POST /v1/grace-backfill``."""
+
+    actual_micro: int
+    price_book_version: str
+
+
+class MeterResponse(BaseModel):
+    """Success body of ``POST /v1/meter``."""
 
     actual_micro: int
     price_book_version: str

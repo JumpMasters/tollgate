@@ -30,6 +30,7 @@ class LedgerKind(StrEnum):
     REAP = "reap"
     OVERAGE = "overage"
     GRACE_BACKFILL = "grace_backfill"
+    METER = "meter"
 
 
 class ClaimOutcome(StrEnum):
@@ -87,7 +88,8 @@ class LedgerEntry:
     carry the SAME token counts — summing token columns across a reservation's rows
     double-counts; only the monetary deltas are additive across rows. ``reservation_id``
     is nullable so a ``grace_backfill`` entry (which has no live reservation) can still be
-    recorded.
+    recorded. A ``meter`` row is self-describing — it carries ``model`` and ``labels`` so
+    metered spend (which has no reservation to join) still rolls up on every chargeback axis.
     """
 
     entry_id: LedgerEntryId
@@ -103,6 +105,13 @@ class LedgerEntry:
     provider: str | None = None
     price_book_version: str | None = None
     ref: str | None = None
+    model: str | None = None
+    labels: Mapping[str, str] | None = None
+
+    def __post_init__(self) -> None:
+        # A read-only copy so nothing mutates a ledger entry's labels after construction (#78).
+        if self.labels is not None:
+            object.__setattr__(self, "labels", MappingProxyType(dict(self.labels)))
 
 
 @dataclass(frozen=True, slots=True)

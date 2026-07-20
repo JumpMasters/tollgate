@@ -26,6 +26,7 @@ dependencies = [
 
 [project.optional-dependencies]
 tokenizers = ["tiktoken>=0.8"]
+litellm = ["litellm>=1.93.0"]
 
 [project.urls]
 Repository = "https://github.com/JumpMasters/tollgate"
@@ -45,6 +46,7 @@ dev = [
     "import-linter>=2.13",
     "pip-audit>=2.7",
     "testcontainers[postgres]>=4.14.2",
+    "litellm>=1.93.0",
 ]
 
 [build-system]
@@ -146,9 +148,9 @@ source_modules = ["tollgate.adapters"]
 forbidden_modules = ["tollgate.application"]
 
 [[tool.importlinter.contracts]]
-name = "the tollgate SDK client stays decoupled (no domain/api/workers)"
+name = "the tollgate integrations stay decoupled (no domain/api/workers)"
 type = "forbidden"
-source_modules = ["tollgate.adapters.integrations.sdk"]
+source_modules = ["tollgate.adapters.integrations"]
 forbidden_modules = [
     "tollgate.domain",
     "tollgate.api",

@@ -194,10 +194,10 @@ class PostgresChargebackRepository:
         else:
             source = source.outerjoin(reservation, res.reservation_id == led.reservation_id)
             if group_by.kind is GroupByKind.MODEL:
-                grouping = res.model
+                grouping = func.coalesce(res.model, led.model)
             else:  # LABEL: labels ->> :key (parse_group_by guarantees a non-empty key)
                 key = group_by.label_key or ""
-                grouping = res.labels.op("->>")(key)
+                grouping = func.coalesce(res.labels.op("->>")(key), led.labels.op("->>")(key))
         stmt = (
             select(grouping.label("grp"), spend.label("spend_micro"))
             .select_from(source)

@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import json
+from typing import cast
 
 import httpx
 import pytest
 
-from tollgate.adapters.integrations.sdk.client import ProviderUsage, TollgateClient
+from tollgate.adapters.integrations.sdk.client import MeterResult, ProviderUsage, TollgateClient
 from tollgate.adapters.integrations.sdk.config import SdkConfig
 from tollgate.adapters.integrations.sdk.errors import BudgetDenied, EnforcementUnavailable
 
@@ -156,3 +157,59 @@ async def test_extend_sends_no_idempotency_key() -> None:
     client = _client(httpx.MockTransport(handler))
     result = await client.extend(reservation_id="res-1")
     assert result.reservation_id == "res-1"
+
+
+async def test_meter_sends_the_wire_shape_and_parses_the_result() -> None:
+    seen: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["url"] = str(request.url)
+        seen["idem"] = request.headers.get("Idempotency-Key")
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"actual_micro": 175, "price_book_version": "pb-1"})
+
+    client = _client(httpx.MockTransport(handler))
+    result = await client.meter(
+        provider="anthropic",
+        model="claude",
+        usage=ProviderUsage(
+            input_tokens=100, output_tokens=50, cached_input_tokens=10, cache_creation_tokens=5
+        ),
+        idempotency_key="idem-m",
+        project="p1",
+        labels={"env": "prod"},
+        truncated=True,
+    )
+    assert result == MeterResult(actual_micro=175, price_book_version="pb-1")
+    assert str(seen["url"]).endswith("/v1/meter")
+    assert seen["idem"] == "idem-m"
+    assert seen["body"] == {
+        "provider": "anthropic",
+        "model": "claude",
+        "usage": {
+            "input_tokens": 100,
+            "output_tokens": 50,
+            "cached_input_tokens": 10,
+            "cache_creation_tokens": 5,
+        },
+        "labels": {"env": "prod"},
+        "truncated": True,
+        "project_id": "p1",
+    }
+
+
+async def test_meter_omits_project_id_when_not_given() -> None:
+    seen: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"actual_micro": 100, "price_book_version": "pb-1"})
+
+    client = _client(httpx.MockTransport(handler))
+    await client.meter(
+        provider="anthropic",
+        model="claude",
+        usage=ProviderUsage(input_tokens=10, output_tokens=5),
+        idempotency_key="idem-m2",
+    )
+    assert "project_id" not in cast(dict[str, object], seen["body"])

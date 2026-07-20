@@ -45,6 +45,7 @@ The format follows Michael Nygard's
 - [0034 — Reaper execution model: polled run-once ticks reusing the command UnitOfWork](0034-reaper-execution-model.md)
 - [0035 — SDK guard enforcement contract: reserve-before-dispatch, fail-closed, pluggable tokenizer](0035-sdk-guard-enforcement-contract.md)
 - [0036 — Cache-creation token class in the cost model](0036-cache-creation-token-class.md)
+- [0037 — Metering command and LiteLLM callback](0037-metering-command-and-litellm-callback.md)
 
 ## Adding a record
 

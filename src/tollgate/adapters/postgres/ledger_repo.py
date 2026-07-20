@@ -43,6 +43,8 @@ class PostgresLedgerRepository:
                     "provider": entry.provider,
                     "price_book_version": entry.price_book_version,
                     "ref": entry.ref,
+                    "model": entry.model,
+                    "labels": None if entry.labels is None else dict(entry.labels),
                 }
                 for entry in entries
             ],

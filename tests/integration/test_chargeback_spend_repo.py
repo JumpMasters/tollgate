@@ -87,6 +87,86 @@ async def _commit_row(
     )
 
 
+async def _meter_row(
+    conn: AsyncConnection,
+    *,
+    entry_id: str,
+    budget_id: str,
+    provider: str,
+    model: str,
+    labels: dict[str, str],
+    committed: int,
+    overage: int = 0,
+) -> None:
+    await conn.execute(
+        ledger.insert().values(
+            entry_id=entry_id,
+            kind="meter",
+            budget_id=budget_id,
+            period_start=_PERIOD,
+            reservation_id=None,
+            delta_committed_micro=committed,
+            delta_overage_micro=overage,
+            provider=provider,
+            model=model,
+            labels=labels,
+        )
+    )
+
+
+async def test_meter_rows_group_by_ledger_model(db_conn: AsyncConnection) -> None:
+    await _tree(db_conn)
+    await _reservation(db_conn, rid="r1", provider="anthropic", model="claude", labels={})
+    await _commit_row(
+        db_conn,
+        entry_id="e1",
+        budget_id="b-user",
+        reservation_id="r1",
+        provider="anthropic",
+        committed=200,
+    )
+    await _meter_row(
+        db_conn,
+        entry_id="m1",
+        budget_id="b-user",
+        provider="anthropic",
+        model="claude",
+        labels={"env": "prod"},
+        committed=100,
+    )
+    repo = PostgresChargebackRepository(db_conn)
+    rows = await repo.spend_rollup(ScopeKind.USER, "u1", _PERIOD, GroupBy(GroupByKind.MODEL))
+    # the meter row's spend joins the reservation-backed "claude" spend, NOT the None bucket
+    assert {(g.group, g.spend_micro) for g in rows} == {("claude", 300)}
+
+
+async def test_meter_rows_group_by_ledger_label(db_conn: AsyncConnection) -> None:
+    await _tree(db_conn)
+    await _meter_row(
+        db_conn,
+        entry_id="m1",
+        budget_id="b-user",
+        provider="anthropic",
+        model="claude",
+        labels={"env": "prod"},
+        committed=100,
+    )
+    await _meter_row(
+        db_conn,
+        entry_id="m2",
+        budget_id="b-user",
+        provider="anthropic",
+        model="claude",
+        labels={"env": "dev"},
+        committed=40,
+    )
+    repo = PostgresChargebackRepository(db_conn)
+    rows = await repo.spend_rollup(
+        ScopeKind.USER, "u1", _PERIOD, GroupBy(GroupByKind.LABEL, label_key="env")
+    )
+    assert {(g.group, g.spend_micro) for g in rows} == {("prod", 100), ("dev", 40)}
+
+
 async def test_single_node_aggregation_does_not_double_count(db_conn: AsyncConnection) -> None:
     # one reservation drew on BOTH the user and org budgets, so commit wrote a row on each.
     await _tree(db_conn)

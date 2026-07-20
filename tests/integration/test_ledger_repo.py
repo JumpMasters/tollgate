@@ -128,3 +128,34 @@ async def test_append_round_trips_all_provenance_columns(db_conn: AsyncConnectio
     assert row.ref == "reap-1"
     assert row.delta_committed_micro == 80
     assert row.delta_overage_micro == 20
+
+
+async def test_append_persists_meter_kind_model_and_labels(db_conn: AsyncConnection) -> None:
+    await _seed_budget(db_conn)
+    repo = PostgresLedgerRepository(db_conn)
+    await repo.append(
+        [
+            LedgerEntry(
+                entry_id=LedgerEntryId("e-meter"),
+                kind=LedgerKind.METER,
+                budget_id=BudgetId("b1"),
+                period_start=PERIOD,
+                delta_committed_micro=240,
+                delta_overage_micro=0,
+                provider="anthropic",
+                model="claude",
+                labels={"env": "prod"},
+                price_book_version="pb-1",
+                ref="truncated",
+            )
+        ]
+    )
+    row = (
+        await db_conn.execute(
+            text("SELECT kind, model, labels, ref FROM ledger WHERE entry_id = 'e-meter'")
+        )
+    ).one()
+    assert row.kind == "meter"
+    assert row.model == "claude"
+    assert row.labels == {"env": "prod"}
+    assert row.ref == "truncated"

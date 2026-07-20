@@ -167,3 +167,40 @@ class GraceBackfillResult:
 
     actual_micro: int
     price_book_version: str
+
+
+@dataclass(frozen=True, slots=True)
+class MeterCommand:
+    """Record already-incurred, provider-reported spend against the applicable budgets (section 6).
+
+    Metering is post-charge and never denies: unlike ``reserve`` there is no reservation and no
+    admission gate — the call already happened, so the applicable budget set, price, and period
+    are resolved server-side and the actual cost is applied against each node's live remaining
+    (committed up to remaining, excess as audited overage). ``labels`` are opaque chargeback tags
+    recorded on the metering ledger rows. ``truncated`` marks spend metered from a call that
+    failed or whose stream died mid-flight (last-seen usage).
+    """
+
+    idempotency_key: str
+    provider: str
+    model: str
+    usage: ProviderUsage
+    labels: Mapping[str, str]
+    project_id: ProjectId | None = None
+    truncated: bool = False
+
+    def __post_init__(self) -> None:
+        # frozen guards rebinding, not the referenced dict; store a read-only copy (#78).
+        object.__setattr__(self, "labels", MappingProxyType(dict(self.labels)))
+
+
+@dataclass(frozen=True, slots=True)
+class MeterResult:
+    """The outcome of a meter: the recorded cost and its price basis (section 6).
+
+    Per-node committed/overage splits vary with each node's live remaining and are recorded on
+    the ``meter`` ledger rows, not summarized here.
+    """
+
+    actual_micro: int
+    price_book_version: str

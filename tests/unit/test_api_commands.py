@@ -9,7 +9,10 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from tollgate.api.app import create_api
+from tollgate.app import build_app
 from tollgate.application.auth import AuthContext
+from tollgate.application.handlers.meter import MeterHandler
+from tollgate.config.settings import Settings
 from tollgate.domain.commands import (
     CancelCommand,
     CancelResult,
@@ -19,6 +22,8 @@ from tollgate.domain.commands import (
     ExtendResult,
     GraceBackfillCommand,
     GraceBackfillResult,
+    MeterCommand,
+    MeterResult,
     ProviderUsage,
     ReserveCommand,
     ReserveResult,
@@ -115,6 +120,15 @@ class _StubGrace:
     ) -> GraceBackfillResult:
         self.calls.append((auth, command))
         return GraceBackfillResult(actual_micro=200, price_book_version="pb-1")
+
+
+class _StubMeter:
+    def __init__(self) -> None:
+        self.calls: list[tuple[AuthContext, MeterCommand]] = []
+
+    async def meter(self, auth: AuthContext, command: MeterCommand) -> MeterResult:
+        self.calls.append((auth, command))
+        return MeterResult(actual_micro=200, price_book_version="pb-1")
 
 
 def test_reserve_translates_the_wire_into_the_command() -> None:
@@ -283,3 +297,42 @@ def test_grace_backfill_translates_the_wire_into_the_command() -> None:
         usage=ProviderUsage(input_tokens=100, output_tokens=50, cached_input_tokens=0),
         project_id=None,
     )
+
+
+def test_meter_translates_the_wire_into_the_command() -> None:
+    stub = _StubMeter()
+    client = TestClient(_app(meter_handler=stub))
+    response = client.post(
+        "/v1/meter",
+        json={
+            "provider": "anthropic",
+            "model": "claude",
+            "usage": {"input_tokens": 100, "output_tokens": 50, "cache_creation_tokens": 7},
+            "labels": {"env": "prod"},
+            "truncated": True,
+        },
+        headers=_AUTH_HEADERS,
+    )
+    assert response.status_code == 200
+    assert response.json() == {"actual_micro": 200, "price_book_version": "pb-1"}
+    (_, command) = stub.calls[0]
+    assert command == MeterCommand(
+        idempotency_key="idem-1",
+        provider="anthropic",
+        model="claude",
+        usage=ProviderUsage(
+            input_tokens=100, output_tokens=50, cached_input_tokens=0, cache_creation_tokens=7
+        ),
+        labels={"env": "prod"},
+        project_id=None,
+        truncated=True,
+    )
+
+
+async def test_build_app_wires_the_meter_route_and_handler() -> None:
+    app = build_app(Settings(token_hash_secret="unit-secret"))
+    try:
+        assert "/v1/meter" in app.openapi()["paths"]
+        assert isinstance(app.state.meter_handler, MeterHandler)
+    finally:
+        await app.state.engine.dispose()

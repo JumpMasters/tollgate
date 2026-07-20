@@ -49,6 +49,12 @@ class ExtendResult:
     ttl_deadline: datetime
 
 
+@dataclass(frozen=True, slots=True)
+class MeterResult:
+    actual_micro: int
+    price_book_version: str
+
+
 class TollgateClient:
     """Async transport for reserve/commit/cancel/extend, with fail-closed error mapping."""
 
@@ -157,6 +163,37 @@ class TollgateClient:
         return ExtendResult(
             reservation_id=str(data["reservation_id"]),
             ttl_deadline=datetime.fromisoformat(str(data["ttl_deadline"])),
+        )
+
+    async def meter(
+        self,
+        *,
+        provider: str,
+        model: str,
+        usage: ProviderUsage,
+        idempotency_key: str,
+        labels: dict[str, str] | None = None,
+        project: str | None = None,
+        truncated: bool = False,
+    ) -> MeterResult:
+        body: dict[str, Any] = {
+            "provider": provider,
+            "model": model,
+            "usage": {
+                "input_tokens": usage.input_tokens,
+                "output_tokens": usage.output_tokens,
+                "cached_input_tokens": usage.cached_input_tokens,
+                "cache_creation_tokens": usage.cache_creation_tokens,
+            },
+            "labels": labels or {},
+            "truncated": truncated,
+        }
+        if project is not None:
+            body["project_id"] = project
+        data = await self._post("/v1/meter", body, idempotency_key=idempotency_key)
+        return MeterResult(
+            actual_micro=int(data["actual_micro"]),
+            price_book_version=str(data["price_book_version"]),
         )
 
 
