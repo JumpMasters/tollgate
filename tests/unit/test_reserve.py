@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 
 from tollgate.application.auth import AuthContext
+from tollgate.application.handlers.common import command_fingerprint
 from tollgate.application.handlers.reserve import ReserveHandler, reserve_fingerprint
 from tollgate.domain.commands import ReserveCommand, ReserveResult
 from tollgate.domain.credentials import Credential, CredentialStatus, Principal
@@ -448,3 +449,22 @@ def test_reserve_fingerprint_is_stable_and_command_sensitive() -> None:
     reordered = replace(base, labels={"env": "prod", "team": "blue"})
     other_order = replace(base, labels={"team": "blue", "env": "prod"})
     assert reserve_fingerprint(principal, reordered) == reserve_fingerprint(principal, other_order)
+
+
+def test_reserve_fingerprint_folds_the_command_discriminator() -> None:
+    # Every other command folds a "command" key so two command kinds can't collide under one key;
+    # reserve folds it too, for symmetry and defense-in-depth (#106).
+    principal = _principal()
+    command = _command()
+    assert reserve_fingerprint(principal, command) == command_fingerprint(
+        {
+            "command": "reserve",
+            "principal_id": principal.user_id,
+            "provider": command.provider,
+            "model": command.model,
+            "input_bound_tokens": command.input_bound_tokens,
+            "max_output_tokens": command.max_output_tokens,
+            "project_id": command.project_id,
+            "labels": dict(command.labels),
+        }
+    )

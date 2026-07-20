@@ -53,9 +53,13 @@ def reserve_fingerprint(principal: Principal, command: ReserveCommand) -> str:
     are rejected; the fingerprint folds the derived principal and every cost-determining field
     so a retry of the *same* logical call matches while a different call does not. The
     canonical JSON sorts keys (labels included), so field order never changes the fingerprint.
+    The ``"command"`` discriminator matches every other command (commit/cancel/meter/grace) so two
+    command kinds can never collide under one key — defense-in-depth even though reserve's field
+    set is already structurally disjoint from the others' (#106).
     """
     return command_fingerprint(
         {
+            "command": "reserve",
             "principal_id": principal.user_id,
             "provider": command.provider,
             "model": command.model,

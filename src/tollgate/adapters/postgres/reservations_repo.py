@@ -32,7 +32,7 @@ from tollgate.domain.records import (
     StoredReservation,
 )
 from tollgate.domain.reservations import ReservationStatus
-from tollgate.domain.scopes import BudgetNode, ScopeKind
+from tollgate.domain.scopes import BudgetNode, ScopeKind, lock_order_key
 
 #: The per-principal idempotency guard on ``reservation`` (naming convention, see #61/#71).
 _IDEMPOTENCY_UNIQUE = "uq_reservation_principal_id_idempotency_key"
@@ -157,7 +157,10 @@ class PostgresReservationRepository:
 
         The join to ``budget`` recovers each line's scope, so callers can walk the balances in
         the canonical lock order; the line's own ``period_start`` is carried because a late
-        commit replays against each line's original period (ADR 0029).
+        commit replays against each line's original period (ADR 0029). The result is returned
+        already sorted in the canonical lock order (``lock_order_key`` then ``period_start``, the
+        same key ``ordered_lines`` applies), so deadlock-freedom is self-enforcing at the source
+        rather than resting on every caller remembering to re-sort (#107).
         """
         rows = (
             await self._conn.execute(
@@ -176,7 +179,7 @@ class PostgresReservationRepository:
                 .where(reservation_line.c.reservation_id == reservation_id)
             )
         ).all()
-        return [
+        views = [
             ReservationLineView(
                 node=BudgetNode(BudgetId(row.budget_id), ScopeKind(row.scope_kind), row.scope_id),
                 period_start=row.period_start,
@@ -184,6 +187,7 @@ class PostgresReservationRepository:
             )
             for row in rows
         ]
+        return sorted(views, key=lambda view: (*lock_order_key(view.node), view.period_start))
 
     async def claim_late_commit(self, reservation_id: ReservationId) -> bool:
         """Move a reaped reservation to committed; return whether this caller won (ADR 0029).

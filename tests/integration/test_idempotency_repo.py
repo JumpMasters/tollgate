@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from tollgate.adapters.postgres.idempotency_repo import PostgresIdempotencyRepository
 from tollgate.adapters.postgres.schema import idempotency_key
+from tollgate.domain.errors import TollgateError
 from tollgate.domain.records import ClaimOutcome
 
 _NOW = datetime(2026, 6, 23, 12, 0, tzinfo=UTC)
@@ -29,6 +31,15 @@ async def test_claim_same_key_same_fingerprint_replays_stored_response(
     claim = await repo.claim("p1", "k1", "fp-1")
     assert claim.outcome is ClaimOutcome.REPLAY
     assert claim.response == {"reservation_id": "r1"}
+
+
+async def test_store_response_on_an_unclaimed_key_fails_loud(db_conn: AsyncConnection) -> None:
+    # store_response only ever runs after claim inserted the row in the same transaction, so it
+    # must match exactly one row; a rowcount of zero is an invariant breach, not a client outcome,
+    # and raising beats silently dropping the response and leaving a keyless success (#107).
+    repo = PostgresIdempotencyRepository(db_conn)
+    with pytest.raises(TollgateError):
+        await repo.store_response("p1", "never-claimed", "succeeded", {"x": 1})
 
 
 async def test_claim_same_key_different_fingerprint_is_mismatch(db_conn: AsyncConnection) -> None:

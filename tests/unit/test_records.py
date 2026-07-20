@@ -90,6 +90,21 @@ def test_idempotency_claim_without_a_response_stays_none() -> None:
     assert IdempotencyClaim(ClaimOutcome.FRESH).response is None
 
 
+def test_idempotency_claim_response_is_deeply_immutable() -> None:
+    # The shallow read-only view left nested containers mutably aliased (#105); a nested cached
+    # response must be frozen all the way down.
+    source: dict[str, object] = {"nested": {"k": 1}, "items": [1, 2]}
+    claim = IdempotencyClaim(ClaimOutcome.REPLAY, response=source)
+    assert claim.response is not None
+    nested = claim.response["nested"]
+    with pytest.raises(TypeError):
+        nested["k"] = 2  # nested mapping is read-only, not just the top level
+    assert claim.response["items"] == (1, 2)  # nested sequence frozen to a tuple
+    # mutating the original source does not leak into the frozen copy
+    source["nested"]["k"] = 99  # type: ignore[index]
+    assert claim.response["nested"]["k"] == 1
+
+
 def test_ledger_entry_carries_model_and_read_only_labels() -> None:
     # LedgerKind.METER is added in Task 2; RESERVE exercises the same model/labels fields here.
     src = {"env": "prod"}

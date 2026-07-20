@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Header, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 
 from tollgate.api.dependencies import RequestAuth
 from tollgate.api.schemas import (
@@ -50,9 +50,24 @@ from tollgate.domain.ids import ProjectId, ReservationId
 
 router = APIRouter(prefix="/v1")
 
-IdempotencyKey = Annotated[
-    str, Header(alias="Idempotency-Key", min_length=1, max_length=MAX_STR_LEN)
-]
+
+def _normalize_idempotency_key(
+    raw: Annotated[str, Header(alias="Idempotency-Key", min_length=1, max_length=MAX_STR_LEN)],
+) -> str:
+    """Trim surrounding whitespace so ``"k"`` and ``" k "`` are the same cache entry (#107).
+
+    Only the raw length was bounded, so whitespace-padded variants of one key claimed distinct
+    rows and defeated their own idempotency. Case is left intact — an idempotency key is an opaque
+    client token, so lowercasing it could instead *collide* two keys a caller meant to keep apart.
+    A key that is entirely whitespace trims to empty and is rejected.
+    """
+    key = raw.strip()
+    if not key:
+        raise HTTPException(status_code=422, detail="Idempotency-Key must not be blank")
+    return key
+
+
+IdempotencyKey = Annotated[str, Depends(_normalize_idempotency_key)]
 
 #: Domain error statuses the command routes can return, documented with the error envelope
 #: (ADR 0031). The request-validation 422 (and the domain UnknownModel 422 that shares it) is
@@ -66,9 +81,11 @@ _ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     503: {"model": ErrorEnvelope, "description": "enforcement datastore unavailable"},
 }
 
-#: The never-deny apply_spend routes (meter, grace-backfill) cannot return 402 — they record
-#: spend rather than gate it — so they advertise the shared errors minus insufficient-budget.
-_NEVER_DENY_ERROR_RESPONSES = {k: v for k, v in _ERROR_RESPONSES.items() if k != 402}
+#: Only ``reserve`` can raise ``InsufficientBudget`` (402) — it is the sole admission gate. Every
+#: other command records (meter, grace-backfill), reconciles (commit records overage rather than
+#: denying), releases (cancel), or heartbeats (extend, touching no balance), so none can return a
+#: 402 and none should advertise one (#100). This is the shared set minus insufficient-budget.
+_NO_BUDGET_DENIAL_RESPONSES = {k: v for k, v in _ERROR_RESPONSES.items() if k != 402}
 
 
 def _usage(body: UsageBody) -> ProviderUsage:
@@ -107,7 +124,7 @@ async def reserve(
     )
 
 
-@router.post("/commit", responses=_ERROR_RESPONSES)
+@router.post("/commit", responses=_NO_BUDGET_DENIAL_RESPONSES)
 async def commit(
     request: Request,
     body: CommitRequest,
@@ -129,7 +146,7 @@ async def commit(
     )
 
 
-@router.post("/cancel", responses=_ERROR_RESPONSES)
+@router.post("/cancel", responses=_NO_BUDGET_DENIAL_RESPONSES)
 async def cancel(
     request: Request,
     body: CancelRequest,
@@ -149,7 +166,7 @@ async def cancel(
     )
 
 
-@router.post("/extend", responses=_ERROR_RESPONSES)
+@router.post("/extend", responses=_NO_BUDGET_DENIAL_RESPONSES)
 async def extend(request: Request, body: ExtendRequest, auth: RequestAuth) -> ExtendResponse:
     """Heartbeat a held reservation; no Idempotency-Key - extend is monotonic (section 4)."""
     handler: ExtendHandler = request.app.state.extend_handler
@@ -158,7 +175,7 @@ async def extend(request: Request, body: ExtendRequest, auth: RequestAuth) -> Ex
     return ExtendResponse(reservation_id=result.reservation_id, ttl_deadline=result.ttl_deadline)
 
 
-@router.post("/grace-backfill", responses=_NEVER_DENY_ERROR_RESPONSES)
+@router.post("/grace-backfill", responses=_NO_BUDGET_DENIAL_RESPONSES)
 async def grace_backfill(
     request: Request,
     body: GraceBackfillRequest,
@@ -181,7 +198,7 @@ async def grace_backfill(
     )
 
 
-@router.post("/meter", responses=_NEVER_DENY_ERROR_RESPONSES)
+@router.post("/meter", responses=_NO_BUDGET_DENIAL_RESPONSES)
 async def meter(
     request: Request,
     body: MeterRequest,

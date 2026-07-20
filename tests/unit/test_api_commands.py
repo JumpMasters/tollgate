@@ -338,6 +338,45 @@ def test_meter_never_advertises_402_but_keeps_other_shared_errors() -> None:
     assert "403" in responses
 
 
+def test_only_reserve_advertises_402() -> None:
+    # Only reserve can raise InsufficientBudget; commit records overage, cancel releases, extend
+    # touches no balance — none can return a 402, so none should advertise one (#100).
+    app = _app(
+        reserve_handler=_StubReserve(),
+        commit_handler=_StubCommit(),
+        cancel_handler=_StubCancel(),
+        extend_handler=_StubExtend(),
+    )
+    paths = app.openapi()["paths"]
+    assert "402" in paths["/v1/reserve"]["post"]["responses"]
+    for route in ("/v1/commit", "/v1/cancel", "/v1/extend"):
+        responses = paths[route]["post"]["responses"]
+        assert "402" not in responses, route
+        assert "403" in responses  # the rest of the shared error set is unchanged
+
+
+def test_idempotency_key_is_trimmed_of_surrounding_whitespace() -> None:
+    stub = _StubReserve()
+    client = TestClient(_app(reserve_handler=stub))
+    response = client.post(
+        "/v1/reserve",
+        json=_RESERVE_BODY,
+        headers={"Authorization": "Bearer tok-1", "Idempotency-Key": "  idem-x  "},
+    )
+    assert response.status_code == 200
+    assert stub.calls[0][1].idempotency_key == "idem-x"  # normalized, so padded variants dedupe
+
+
+def test_blank_idempotency_key_is_rejected() -> None:
+    client = TestClient(_app(reserve_handler=_StubReserve()))
+    response = client.post(
+        "/v1/reserve",
+        json=_RESERVE_BODY,
+        headers={"Authorization": "Bearer tok-1", "Idempotency-Key": "   "},
+    )
+    assert response.status_code == 422
+
+
 async def test_build_app_wires_the_meter_route_and_handler() -> None:
     app = build_app(Settings(token_hash_secret="unit-secret"))
     try:

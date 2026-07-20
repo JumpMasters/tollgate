@@ -142,6 +142,16 @@ class ReservationLineView:
     amount_micro: int
 
 
+def _deep_freeze(value: Any) -> Any:
+    """Recursively make a JSON-shaped value read-only: mappings become :class:`MappingProxyType`
+    and sequences become tuples, so no nested container remains mutably aliased (#105)."""
+    if isinstance(value, Mapping):
+        return MappingProxyType({key: _deep_freeze(item) for key, item in value.items()})
+    if isinstance(value, list | tuple):
+        return tuple(_deep_freeze(item) for item in value)
+    return value
+
+
 @dataclass(frozen=True, slots=True)
 class IdempotencyClaim:
     """The outcome of an idempotency-key claim; ``response`` is set only on ``REPLAY``."""
@@ -150,6 +160,8 @@ class IdempotencyClaim:
     response: Mapping[str, Any] | None = None
 
     def __post_init__(self) -> None:
-        # A read-only copy of the cached response, so nothing can mutate it after the claim (#78).
+        # A deeply read-only copy, so nothing can mutate it — or any nested list/dict — after the
+        # claim. The shallow MappingProxyType only froze the top level; a nested cached response
+        # stayed mutably aliased (#105, cf. #78).
         if self.response is not None:
-            object.__setattr__(self, "response", MappingProxyType(dict(self.response)))
+            object.__setattr__(self, "response", _deep_freeze(self.response))
