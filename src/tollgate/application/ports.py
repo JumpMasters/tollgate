@@ -166,7 +166,7 @@ class IdempotencyRepository(Protocol):
         ...
 
     async def store_response(
-        self, principal_id: str, key: str, status: str, response: Mapping[str, Any]
+        self, principal_id: str, key: str, response: Mapping[str, Any]
     ) -> None:
         """Cache a command's response on its key row so a later duplicate replays it."""
         ...

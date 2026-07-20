@@ -16,7 +16,6 @@ from typing import Any
 
 from tollgate.application.auth import AuthContext
 from tollgate.application.handlers.common import (
-    RESPONSE_SUCCEEDED,
     command_fingerprint,
     load_owned_reservation,
     ordered_lines,
@@ -120,7 +119,6 @@ class CancelHandler:
             await tx.idempotency.store_response(
                 principal_id,
                 command.idempotency_key,
-                RESPONSE_SUCCEEDED,
                 _result_to_response(result),
             )
             return result

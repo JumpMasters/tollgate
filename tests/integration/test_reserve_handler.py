@@ -158,7 +158,7 @@ async def test_reserve_persists_the_whole_envelope(committing_engine: AsyncEngin
     assert await _scalar(committing_engine, "SELECT count(*) FROM ledger WHERE kind='reserve'") == 2
     assert (
         await _scalar(
-            committing_engine, "SELECT count(*) FROM idempotency_key WHERE status='succeeded'"
+            committing_engine, "SELECT count(*) FROM idempotency_key WHERE response IS NOT NULL"
         )
         == 1
     )
@@ -224,7 +224,7 @@ async def test_insufficient_budget_denial_is_not_stale_cached(
     assert result.estimated_micro == 300
     assert (
         await _scalar(
-            committing_engine, "SELECT count(*) FROM idempotency_key WHERE status='succeeded'"
+            committing_engine, "SELECT count(*) FROM idempotency_key WHERE response IS NOT NULL"
         )
         == 1
     )

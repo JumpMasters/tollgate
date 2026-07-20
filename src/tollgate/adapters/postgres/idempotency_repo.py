@@ -82,7 +82,7 @@ class PostgresIdempotencyRepository:
         raise EnforcementUnavailable("idempotency claim did not converge under reaper contention")
 
     async def store_response(
-        self, principal_id: str, key: str, status: str, response: Mapping[str, Any]
+        self, principal_id: str, key: str, response: Mapping[str, Any]
     ) -> None:
         """Cache a command's response on its key row so a later duplicate replays it.
 
@@ -97,7 +97,7 @@ class PostgresIdempotencyRepository:
                 self._table.c.principal_id == principal_id,
                 self._table.c.key == key,
             )
-            .values(status=status, response=dict(response))
+            .values(response=dict(response))
         )
         result = await self._conn.execute(stmt)
         if result.rowcount != 1:

@@ -107,7 +107,7 @@ class _NoIdempotency:
         raise AssertionError("extend is naturally idempotent and needs no key (§4)")
 
     async def store_response(
-        self, principal_id: str, key: str, status: str, response: Mapping[str, Any]
+        self, principal_id: str, key: str, response: Mapping[str, Any]
     ) -> None:
         raise AssertionError("extend caches no response")
 

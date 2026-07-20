@@ -1,7 +1,12 @@
 # 0007 — Idempotency caching policy
 
-- Status: Accepted
+- Status: Superseded by [ADR 0038](0038-cache-only-successful-idempotent-responses.md) (2026-07-20)
 - Date: 2026-06-22
+
+> **Superseded.** This record's "cache successes *and* hard validation rejections" decision was
+> never implemented — the code caches only successes, which is the safer policy. ADR 0038 records
+> the as-built decision and drops the vestigial `status` column (#96). The rest of this record
+> (exactly-once via the claimed key, no stale-caching of budget denials) still holds.
 
 ## Context
 

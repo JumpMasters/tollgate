@@ -114,7 +114,7 @@ class _FakeIdempotencyRepository:
         return IdempotencyClaim(ClaimOutcome.FRESH)
 
     async def store_response(
-        self, principal_id: str, key: str, status: str, response: Mapping[str, Any]
+        self, principal_id: str, key: str, response: Mapping[str, Any]
     ) -> None:
         return None
 
@@ -180,7 +180,7 @@ async def test_fakes_conform_to_the_repository_ports() -> None:
 
     claim = await idempotency.claim("p1", "idem-1", "fp")
     assert claim.outcome is ClaimOutcome.FRESH
-    await idempotency.store_response("p1", "idem-1", "succeeded", {"reservation_id": "r1"})
+    await idempotency.store_response("p1", "idem-1", {"reservation_id": "r1"})
     assert await idempotency.delete_expired(_PERIOD, 10) == 0
 
     await ledger.append(

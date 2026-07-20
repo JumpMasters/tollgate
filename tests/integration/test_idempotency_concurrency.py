@@ -26,7 +26,7 @@ async def _claim_once(
         repo = PostgresIdempotencyRepository(conn)
         claim = await repo.claim(principal_id, key, fingerprint)
         if claim.outcome is ClaimOutcome.FRESH:
-            await repo.store_response(principal_id, key, "succeeded", {"reservation_id": "r1"})
+            await repo.store_response(principal_id, key, {"reservation_id": "r1"})
         await txn.commit()
         return claim.outcome
 
