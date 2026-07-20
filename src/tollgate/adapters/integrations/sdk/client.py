@@ -55,6 +55,15 @@ class MeterResult:
     price_book_version: str
 
 
+def _usage_body(usage: ProviderUsage) -> dict[str, int]:
+    return {
+        "input_tokens": usage.input_tokens,
+        "output_tokens": usage.output_tokens,
+        "cached_input_tokens": usage.cached_input_tokens,
+        "cache_creation_tokens": usage.cache_creation_tokens,
+    }
+
+
 class TollgateClient:
     """Async transport for reserve/commit/cancel/extend, with fail-closed error mapping."""
 
@@ -134,12 +143,7 @@ class TollgateClient:
     ) -> CommitResult:
         body = {
             "reservation_id": reservation_id,
-            "usage": {
-                "input_tokens": usage.input_tokens,
-                "output_tokens": usage.output_tokens,
-                "cached_input_tokens": usage.cached_input_tokens,
-                "cache_creation_tokens": usage.cache_creation_tokens,
-            },
+            "usage": _usage_body(usage),
         }
         data = await self._post("/v1/commit", body, idempotency_key=idempotency_key)
         return CommitResult(
@@ -179,12 +183,7 @@ class TollgateClient:
         body: dict[str, Any] = {
             "provider": provider,
             "model": model,
-            "usage": {
-                "input_tokens": usage.input_tokens,
-                "output_tokens": usage.output_tokens,
-                "cached_input_tokens": usage.cached_input_tokens,
-                "cache_creation_tokens": usage.cache_creation_tokens,
-            },
+            "usage": _usage_body(usage),
             "labels": labels or {},
             "truncated": truncated,
         }

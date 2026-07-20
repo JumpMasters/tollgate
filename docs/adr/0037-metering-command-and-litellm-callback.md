@@ -100,3 +100,8 @@ metered calls outside the ledger and chargeback entirely.
 - Deployments that need enforcement guarantees must route through the SDK guard; the LiteLLM
   callback is a chargeback-completeness tool, not a substitute for it. Operators mixing both
   integrations on the same call path will silently double-count until this note is followed.
+- The callback meters under litellm's own model string, so a `(provider, model)` pair absent from
+  the price book raises `UnknownModel`, which the callback logs and swallows — spend is dropped,
+  not recorded, and no error surfaces to the caller. Deployments must keep price-book model ids
+  aligned with the model strings their gateway reports, or metered spend for unpriced models goes
+  silently unrecorded.

@@ -329,6 +329,15 @@ def test_meter_translates_the_wire_into_the_command() -> None:
     )
 
 
+def test_meter_never_advertises_402_but_keeps_other_shared_errors() -> None:
+    # /v1/meter uses apply_spend and can never deny (never a 402); it still shares the rest of
+    # the command routes' documented error set, e.g. 403 (no budget governs the request).
+    app = _app(meter_handler=_StubMeter())
+    responses = app.openapi()["paths"]["/v1/meter"]["post"]["responses"]
+    assert "402" not in responses
+    assert "403" in responses
+
+
 async def test_build_app_wires_the_meter_route_and_handler() -> None:
     app = build_app(Settings(token_hash_secret="unit-secret"))
     try:

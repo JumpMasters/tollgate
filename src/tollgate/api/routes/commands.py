@@ -66,6 +66,10 @@ _ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     503: {"model": ErrorEnvelope, "description": "enforcement datastore unavailable"},
 }
 
+#: The never-deny apply_spend routes (meter, grace-backfill) cannot return 402 — they record
+#: spend rather than gate it — so they advertise the shared errors minus insufficient-budget.
+_NEVER_DENY_ERROR_RESPONSES = {k: v for k, v in _ERROR_RESPONSES.items() if k != 402}
+
 
 def _usage(body: UsageBody) -> ProviderUsage:
     return ProviderUsage(
@@ -154,7 +158,7 @@ async def extend(request: Request, body: ExtendRequest, auth: RequestAuth) -> Ex
     return ExtendResponse(reservation_id=result.reservation_id, ttl_deadline=result.ttl_deadline)
 
 
-@router.post("/grace-backfill", responses=_ERROR_RESPONSES)
+@router.post("/grace-backfill", responses=_NEVER_DENY_ERROR_RESPONSES)
 async def grace_backfill(
     request: Request,
     body: GraceBackfillRequest,
@@ -177,7 +181,7 @@ async def grace_backfill(
     )
 
 
-@router.post("/meter", responses=_ERROR_RESPONSES)
+@router.post("/meter", responses=_NEVER_DENY_ERROR_RESPONSES)
 async def meter(
     request: Request,
     body: MeterRequest,
