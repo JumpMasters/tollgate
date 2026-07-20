@@ -30,6 +30,7 @@ class LedgerKind(StrEnum):
     REAP = "reap"
     OVERAGE = "overage"
     GRACE_BACKFILL = "grace_backfill"
+    METER = "meter"
 
 
 class ClaimOutcome(StrEnum):

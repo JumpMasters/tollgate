@@ -51,7 +51,15 @@ SCOPE_KINDS = ("org", "team", "user", "project")
 PERIOD_KINDS = ("calendar_month", "rolling_days")
 CREDENTIAL_STATUSES = ("active", "revoked")
 RESERVATION_STATUSES = ("held", "committed", "released", "reaped")
-LEDGER_KINDS = ("reserve", "commit_adjust", "release", "reap", "overage", "grace_backfill")
+LEDGER_KINDS = (
+    "reserve",
+    "commit_adjust",
+    "release",
+    "reap",
+    "overage",
+    "grace_backfill",
+    "meter",
+)
 
 
 def _enum_check(column: str, values: tuple[str, ...], name: str) -> CheckConstraint:
@@ -236,6 +244,8 @@ ledger = Table(
     Column("provider", Text, nullable=True),
     Column("price_book_version", Text, nullable=True),
     Column("ref", Text, nullable=True),
+    Column("model", Text, nullable=True),
+    Column("labels", JSONB, nullable=True),
     _enum_check("kind", LEDGER_KINDS, "kind"),
     Index("ix_ledger_budget_id_ts", "budget_id", "ts"),
 )
