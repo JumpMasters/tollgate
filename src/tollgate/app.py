@@ -130,6 +130,7 @@ def _reservation_reaper(engine: AsyncEngine, settings: Settings) -> ReservationR
         clock=SystemClock(),
         ids=Uuid7IdGenerator(),
         batch_size=settings.reaper_batch_size,
+        max_reap_attempts=settings.reaper_max_reap_attempts,
     )
 
 

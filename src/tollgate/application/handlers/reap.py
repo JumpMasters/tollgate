@@ -34,11 +34,27 @@ class ReapReport:
 class ReservationReaperHandler:
     """Releases held reservations past their TTL, one bounded transaction each (§5.4, §5.5)."""
 
-    def __init__(self, *, uow: UnitOfWork, clock: Clock, ids: IdGenerator, batch_size: int) -> None:
+    def __init__(
+        self,
+        *,
+        uow: UnitOfWork,
+        clock: Clock,
+        ids: IdGenerator,
+        batch_size: int,
+        max_reap_attempts: int = 5,
+    ) -> None:
         self._uow = uow
         self._clock = clock
         self._ids = ids
         self._batch_size = batch_size
+        self._max_reap_attempts = max_reap_attempts
+        # Cross-tick poison-row bookkeeping (#91). Attempt counts accumulate across ticks; a row
+        # that fails ``max_reap_attempts`` times is quarantined — excluded from every future claim
+        # this process — so it stops recirculating at the queue head and stranding its estimate
+        # unseen. This state is per-process (a restart re-attempts, a fresh chance if contention
+        # cleared); a durable dead-letter would need a persisted attempt column.
+        self._reap_attempts: dict[ReservationId, int] = {}
+        self._quarantined: set[ReservationId] = set()
 
     async def run_once(self) -> ReapReport:
         """Reap expired reservations, each in its own SKIP LOCKED tx, isolating per-item failures.
@@ -49,14 +65,18 @@ class ReservationReaperHandler:
         atomically. A reap that raises is caught so one persistently failing reservation cannot
         abort the whole tick and starve everything behind it (#74): its id is excluded from the
         rest of this tick (its rolled-back status flip would otherwise put it back at the queue
-        head) and the reaper moves to the next candidate. A failure in the *claim* itself (no id
-        yet) is a datastore problem, not one poison row, so it propagates for the runner to handle.
-        The tick is bounded to ``batch_size`` attempts; the next tick continues.
+        head) and the reaper moves to the next candidate. A row that fails this way across
+        ``max_reap_attempts`` ticks is *quarantined* — excluded from every future claim and logged
+        as an error — so a permanent poison row surfaces instead of recirculating forever and
+        silently stranding its estimate (#91). A failure in the *claim* itself (no id yet) is a
+        datastore problem, not one poison row, so it propagates for the runner to handle. The tick
+        is bounded to ``batch_size`` attempts; the next tick continues.
         """
         now = self._clock.now()
         reaped = 0
         failed = 0
-        skip: list[ReservationId] = []
+        # Start from the durable quarantine set so poison rows never re-enter the candidate window.
+        skip: list[ReservationId] = list(self._quarantined)
         while reaped + failed < self._batch_size:
             reservation_id: ReservationId | None = None
             try:
@@ -85,15 +105,35 @@ class ReservationReaperHandler:
                         )
                     await tx.ledger.append(entries)
                 reaped += 1
+                self._reap_attempts.pop(reservation_id, None)  # a clean reap clears its history
             except Exception:
                 if reservation_id is None:
                     raise  # the claim failed, not a single reap; let the runner handle it
-                logger.exception(
-                    "reservation reap failed for %s; skipping it this tick", reservation_id
-                )
+                self._record_reap_failure(reservation_id)
                 skip.append(reservation_id)
                 failed += 1
         return ReapReport(reaped=reaped, failed=failed)
+
+    def _record_reap_failure(self, reservation_id: ReservationId) -> None:
+        """Count a per-item reap failure and quarantine the row once it exhausts its attempts."""
+        attempts = self._reap_attempts.get(reservation_id, 0) + 1
+        if attempts >= self._max_reap_attempts:
+            self._quarantined.add(reservation_id)
+            self._reap_attempts.pop(reservation_id, None)
+            logger.error(
+                "reservation reap failed for %s %d times; quarantining it (its reserved estimate "
+                "is stranded until it is resolved) — investigate",
+                reservation_id,
+                attempts,
+            )
+        else:
+            self._reap_attempts[reservation_id] = attempts
+            logger.exception(
+                "reservation reap failed for %s (attempt %d/%d); skipping it this tick",
+                reservation_id,
+                attempts,
+                self._max_reap_attempts,
+            )
 
 
 class IdempotencyReaperHandler:

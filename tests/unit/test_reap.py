@@ -316,6 +316,53 @@ async def test_reaper_isolates_a_poison_reservation_and_reaps_the_rest() -> None
     assert {e.reservation_id for e in ctx.ledger.appended} == {"r-good-1", "r-good-2"}
 
 
+async def test_reaper_quarantines_a_persistent_poison_row_after_max_attempts(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # A reservation whose reap fails every tick would otherwise recirculate at the queue head
+    # forever — its rolled-back status flip leaves it held with the oldest deadline — stranding its
+    # estimate silently (#91). After max_reap_attempts failed ticks the reaper quarantines it:
+    # excludes it from future claims (so it stops blocking and wasting attempts) and logs an error
+    # so a permanent poison row surfaces instead of recirculating unseen.
+    import logging
+
+    poison = ReservationId("r-poison")
+    reservations = _StarvingReservations(poison=poison, healthy=[])
+    handler = ReservationReaperHandler(
+        uow=_Uow(_Ctx(reservations, counter_store=_PoisonCounterStore())),
+        clock=_ClockAt(_NOW),
+        ids=_SeqIds(),
+        batch_size=100,
+        max_reap_attempts=3,
+    )
+    # Three ticks each fail on the poison (attempts 1, 2, 3); the third crosses the threshold.
+    with caplog.at_level(logging.ERROR):
+        for _ in range(3):
+            report = await handler.run_once()
+            assert report.failed == 1
+    assert any("quarantin" in r.message.lower() for r in caplog.records)
+
+    # From now on the poison is excluded from the claim, so a tick finds nothing and does not fail.
+    reservations.claim_excludes.clear()
+    report = await handler.run_once()
+    assert report == ReapReport(reaped=0, failed=0)
+    assert reservations.claim_excludes[0] == [poison]  # quarantined id excluded on the next claim
+
+
+async def test_reaper_does_not_quarantine_healthy_reservations() -> None:
+    # A tick that reaps cleanly never accrues attempts, so healthy reservations are never excluded.
+    reservations = _FakeReservations([_stored("r-1"), _stored("r-2")], lines=(_USER_LINE,))
+    handler = ReservationReaperHandler(
+        uow=_Uow(_Ctx(reservations)),
+        clock=_ClockAt(_NOW),
+        ids=_SeqIds(),
+        batch_size=100,
+        max_reap_attempts=3,
+    )
+    report = await handler.run_once()
+    assert report == ReapReport(reaped=2, failed=0)
+
+
 async def test_reaper_propagates_a_claim_failure() -> None:
     # A failure in the claim itself (no reservation id yet) is a datastore problem, not one poison
     # row, so it propagates for the runner's backoff/escalation to handle (#74/#75).

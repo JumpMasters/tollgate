@@ -73,6 +73,15 @@ class Settings(BaseSettings):
         ge=1,
         description="Max reservations the reservation reaper reaps per tick (bounded work).",
     )
+    reaper_max_reap_attempts: int = Field(
+        default=5,
+        ge=1,
+        description=(
+            "Consecutive failed reap attempts before the reservation reaper quarantines a poison "
+            "row — excluding it from future claims and logging an error — so it stops "
+            "recirculating at the queue head and stranding its estimate unseen (#91)."
+        ),
+    )
     idempotency_ttl_hours: int = Field(
         default=24,
         ge=1,
