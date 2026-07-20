@@ -105,3 +105,33 @@ def test_unmapped_subtypes_fail_closed_to_500() -> None:
     response = _client_raising(_Novel()).get("/boom")
     assert response.status_code == 500
     assert response.json()["error"]["code"] == "internal_error"
+
+
+def test_unmapped_error_does_not_echo_its_internal_message() -> None:
+    # An unmapped TollgateError is an internal invariant breach; the 500 body must carry the
+    # generic message, never the raw internal string (#101).
+    leak = "idempotency replay is missing its stored response"
+    response = _client_raising(TollgateError(leak)).get("/boom")
+    assert response.status_code == 500
+    body = response.json()
+    assert body["error"]["code"] == "internal_error"
+    assert body["error"]["message"] == "internal error"
+    assert leak not in body["error"]["message"]
+
+
+def test_unexpected_exception_is_enveloped_not_plain_text() -> None:
+    # A non-Tollgate, non-datastore exception (a genuine bug) must still return the ADR 0031
+    # envelope, not Starlette's plain-text "Internal Server Error" (#101).
+    response = _client_raising(ValueError("some internal detail")).get("/boom")
+    assert response.status_code == 500
+    body = response.json()
+    assert body["error"]["code"] == "internal_error"
+    assert body["error"]["message"] == "internal error"
+
+
+def test_incidental_oserror_is_not_a_datastore_outage() -> None:
+    # A bare OSError that is not a connection/timeout is not a datastore outage: it must surface as
+    # a 500 (a bug to fix), not a retryable 503 that tells the SDK to fail-closed-with-grace (#102).
+    response = _client_raising(OSError("some incidental os error")).get("/boom")
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "internal_error"
