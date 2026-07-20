@@ -215,6 +215,7 @@ async def _publish_prices(conn: AsyncConnection) -> None:
                 input_micro_per_token=Decimal(rate),
                 output_micro_per_token=Decimal("2"),
                 cached_input_micro_per_token=Decimal("0.5"),
+                cache_creation_micro_per_token=Decimal("1.25"),
             )
         )
 
@@ -249,6 +250,7 @@ async def test_resolve_price_is_per_pair_latest_not_global_latest(
             input_micro_per_token=Decimal("7"),
             output_micro_per_token=Decimal("9"),
             cached_input_micro_per_token=Decimal("3"),
+            cache_creation_micro_per_token=Decimal("1.25"),
         )
     )
     priced = await PostgresPriceBookRepository(db_conn).resolve_price("openai", "gpt")

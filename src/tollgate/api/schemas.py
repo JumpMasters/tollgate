@@ -46,6 +46,7 @@ class UsageBody(_RequestModel):
     input_tokens: int = Field(ge=0, le=MAX_TOKENS)
     output_tokens: int = Field(ge=0, le=MAX_TOKENS)
     cached_input_tokens: int = Field(default=0, ge=0, le=MAX_TOKENS)
+    cache_creation_tokens: int = Field(default=0, ge=0, le=MAX_TOKENS)
 
     @model_validator(mode="after")
     def _cached_within_input(self) -> UsageBody:

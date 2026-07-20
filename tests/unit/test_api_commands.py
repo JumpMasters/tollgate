@@ -216,7 +216,10 @@ def test_commit_translates_the_wire_into_the_command() -> None:
     client = TestClient(_app(commit_handler=stub))
     response = client.post(
         "/v1/commit",
-        json={"reservation_id": "r1", "usage": {"input_tokens": 100, "output_tokens": 50}},
+        json={
+            "reservation_id": "r1",
+            "usage": {"input_tokens": 100, "output_tokens": 50, "cache_creation_tokens": 7},
+        },
         headers=_AUTH_HEADERS,
     )
     assert response.status_code == 200
@@ -225,8 +228,11 @@ def test_commit_translates_the_wire_into_the_command() -> None:
     assert command == CommitCommand(
         idempotency_key="idem-1",
         reservation_id=ReservationId("r1"),
-        usage=ProviderUsage(input_tokens=100, output_tokens=50, cached_input_tokens=0),
+        usage=ProviderUsage(
+            input_tokens=100, output_tokens=50, cached_input_tokens=0, cache_creation_tokens=7
+        ),
     )
+    assert command.usage.cache_creation_tokens == 7
 
 
 def test_cancel_translates_the_wire_into_the_command() -> None:

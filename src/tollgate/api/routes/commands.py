@@ -68,6 +68,7 @@ def _usage(body: UsageBody) -> ProviderUsage:
         input_tokens=body.input_tokens,
         output_tokens=body.output_tokens,
         cached_input_tokens=body.cached_input_tokens,
+        cache_creation_tokens=body.cache_creation_tokens,
     )
 
 

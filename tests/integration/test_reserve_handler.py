@@ -57,6 +57,7 @@ async def _seed_prices(engine: AsyncEngine) -> None:
                 input_micro_per_token=Decimal("1"),
                 output_micro_per_token=Decimal("2"),
                 cached_input_micro_per_token=Decimal("0.5"),
+                cache_creation_micro_per_token=Decimal("1.25"),
             )
         )
 

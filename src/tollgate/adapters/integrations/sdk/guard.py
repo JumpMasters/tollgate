@@ -29,13 +29,19 @@ class GuardedCall:
         self._usage: ProviderUsage | None = None
 
     def record_usage(
-        self, *, input_tokens: int, output_tokens: int, cached_input_tokens: int = 0
+        self,
+        *,
+        input_tokens: int,
+        output_tokens: int,
+        cached_input_tokens: int = 0,
+        cache_creation_tokens: int = 0,
     ) -> None:
         """Record the provider-reported usage to reconcile on commit (section 4)."""
         self._usage = ProviderUsage(
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             cached_input_tokens=cached_input_tokens,
+            cache_creation_tokens=cache_creation_tokens,
         )
 
     @property

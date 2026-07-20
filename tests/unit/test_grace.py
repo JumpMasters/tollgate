@@ -56,6 +56,7 @@ _PRICE = ModelPrice(
     input_micro_per_token=Decimal("1"),
     output_micro_per_token=Decimal("2"),
     cached_input_micro_per_token=Decimal("0.5"),
+    cache_creation_micro_per_token=Decimal("1.25"),
 )
 _PRICED = PricedModel(version="2026-06-22", price=_PRICE)
 _USER_NODE = BudgetNode(BudgetId("b-user"), ScopeKind.USER, "u1")
@@ -403,4 +404,15 @@ def test_grace_backfill_fingerprint_is_stable_and_command_sensitive() -> None:
     )
     assert grace_backfill_fingerprint(principal, base) != grace_backfill_fingerprint(
         principal, _command(project_id=ProjectId("proj-1"))
+    )
+
+
+def test_grace_fingerprint_is_sensitive_to_cache_creation_tokens() -> None:
+    principal = _principal()
+    base = _command(usage=ProviderUsage(input_tokens=100, output_tokens=50))
+    more = _command(
+        usage=ProviderUsage(input_tokens=100, output_tokens=50, cache_creation_tokens=10)
+    )
+    assert grace_backfill_fingerprint(principal, base) != grace_backfill_fingerprint(
+        principal, more
     )

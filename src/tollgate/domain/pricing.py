@@ -21,7 +21,8 @@ class ModelPrice:
     """Micro-USD-per-token rates for one (provider, model) at one price-book version.
 
     Rates are ``Decimal`` micro-USD per single token: an input price of ``$2.50``
-    per million tokens is ``Decimal("2.5")`` micro-USD per token.
+    per million tokens is ``Decimal("2.5")`` micro-USD per token. ``cache_creation_micro_per_token``
+    prices tokens written to the provider's prompt cache — a premium that may exceed the input rate.
     """
 
     provider: str
@@ -29,12 +30,14 @@ class ModelPrice:
     input_micro_per_token: Decimal
     output_micro_per_token: Decimal
     cached_input_micro_per_token: Decimal
+    cache_creation_micro_per_token: Decimal
 
     def __post_init__(self) -> None:
         if (
             self.input_micro_per_token < 0
             or self.output_micro_per_token < 0
             or self.cached_input_micro_per_token < 0
+            or self.cache_creation_micro_per_token < 0
         ):
             raise ValueError("per-token rates must be non-negative")
         if self.cached_input_micro_per_token > self.input_micro_per_token:
@@ -91,14 +94,22 @@ def actual_micro(
     input_tokens: int,
     output_tokens: int,
     cached_input_tokens: int = 0,
+    cache_creation_tokens: int = 0,
 ) -> int:
     """Reconciled cost from provider-reported usage (§4).
 
-    ``cached_input_tokens`` is the subset of ``input_tokens`` served from the
-    provider's prompt cache, priced at the cached rate; the remaining input tokens
-    and all output tokens price at the full rates. Returns integer micro-USD.
+    ``cached_input_tokens`` is the subset of ``input_tokens`` served from the provider's
+    prompt cache, priced at the cached rate; the remaining input tokens and all output tokens
+    price at the full rates. ``cache_creation_tokens`` are the *disjoint* (not part of
+    ``input_tokens``) tokens written to the provider's prompt cache, priced at the
+    cache-creation rate — a premium that may exceed the input rate. Returns integer micro-USD.
     """
-    if input_tokens < 0 or output_tokens < 0 or cached_input_tokens < 0:
+    if (
+        input_tokens < 0
+        or output_tokens < 0
+        or cached_input_tokens < 0
+        or cache_creation_tokens < 0
+    ):
         raise ValueError("token counts must be non-negative")
     if cached_input_tokens > input_tokens:
         raise ValueError("cached input tokens cannot exceed input tokens")
@@ -106,6 +117,7 @@ def actual_micro(
     total = (
         price.input_micro_per_token * non_cached
         + price.cached_input_micro_per_token * cached_input_tokens
+        + price.cache_creation_micro_per_token * cache_creation_tokens
         + price.output_micro_per_token * output_tokens
     )
     return round_micro(total)
