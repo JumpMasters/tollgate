@@ -15,7 +15,12 @@ from tollgate.application.auth import AuthContext
 from tollgate.application.handlers.meter import MeterHandler, meter_fingerprint
 from tollgate.domain.commands import MeterCommand, MeterResult, ProviderUsage
 from tollgate.domain.credentials import Credential, CredentialStatus, Principal
-from tollgate.domain.errors import BudgetNotFound, IdempotencyKeyReuse, UnknownModel
+from tollgate.domain.errors import (
+    BudgetNotFound,
+    IdempotencyKeyReuse,
+    ScopeNotAuthorized,
+    UnknownModel,
+)
 from tollgate.domain.ids import (
     BudgetId,
     CredentialId,
@@ -400,6 +405,21 @@ async def test_meter_includes_an_authorized_project_budget() -> None:
     await handler.meter(_auth(ScopeKind.ORG, "o1"), _command(project_id=ProjectId("proj-1")))
     applied_budgets = [call[0] for call in uow._ctx.counter_store.apply_calls]
     assert BudgetId("b-proj") in applied_budgets
+
+
+async def test_meter_rejects_a_project_outside_the_credential_scope() -> None:
+    # mirrors test_grace.py::test_backfill_rejects_a_project_outside_the_credential_scope:
+    # the project resolves, but the credential's own ancestry doesn't reach its org, so it is
+    # denied identically to an unknown project (never revealing which) and rolls back nothing.
+    project = ResolvedProject(org_id=OrgId("o1"), budget=_PROJECT_NODE)
+    handler, uow = _build(ancestry=(_USER_NODE,), project=project)
+    with pytest.raises(ScopeNotAuthorized) as excinfo:
+        await handler.meter(_auth(ScopeKind.USER, "u1"), _command(project_id=ProjectId("proj-1")))
+    assert excinfo.value.scope == "project:proj-1"
+    assert uow.rolled_back is True
+    assert uow._ctx.counter_store.apply_calls == []
+    assert uow._ctx.ledger.appended == []
+    assert uow._ctx.idempotency.stored == []
 
 
 def test_meter_fingerprint_is_stable_and_command_sensitive() -> None:
