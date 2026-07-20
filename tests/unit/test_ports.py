@@ -256,6 +256,7 @@ class _FakeCommandContext:
         self.prices: PriceBookRepository = _FakePriceBook()
         self.budgets: BudgetRepository = _FakeBudgets()
         self.idempotency: IdempotencyRepository = _FakeIdempotencyRepository()
+        self.metered_receipt: IdempotencyRepository = _FakeIdempotencyRepository()
         self.reservations: ReservationRepository = _FakeReservationRepository()
         self.ledger: LedgerRepository = _FakeLedgerRepository()
         self.reserve_tx: ReserveTransaction = _FakeReserveTransaction()

@@ -113,6 +113,22 @@ class _FakeIdempotency:
         raise AssertionError("this handler never reaps keys")
 
 
+class _TripwireIdempotency:
+    """Stands in for the reaped idempotency store. Meter/grace must dedup via the durable
+    metered_receipt (#92), so any call here is a regression to the double-applying path."""
+
+    async def claim(self, principal_id: str, key: str, fingerprint: str) -> IdempotencyClaim:
+        raise AssertionError("meter/grace must dedup via metered_receipt, not idempotency (#92)")
+
+    async def store_response(
+        self, principal_id: str, key: str, status: str, response: Mapping[str, Any]
+    ) -> None:
+        raise AssertionError("meter/grace must dedup via metered_receipt, not idempotency (#92)")
+
+    async def delete_expired(self, cutoff: datetime, limit: int) -> int:
+        raise AssertionError("meter/grace never reap")
+
+
 class _FakeCounterStore:
     def __init__(self, apply_splits: Mapping[str, Reconciliation] | None = None) -> None:
         self._apply_splits = dict(apply_splits or {})
@@ -231,7 +247,8 @@ class _Ctx:
     ) -> None:
         self.prices = prices
         self.budgets = budgets
-        self.idempotency = idempotency
+        self.metered_receipt = idempotency
+        self.idempotency = _TripwireIdempotency()
         self.reservations = _StubReservations()
         self.ledger = ledger
         self.reserve_tx = _StubReserveTx()
@@ -325,7 +342,7 @@ async def test_meter_records_spend_never_denies_and_books_overage() -> None:
     assert all(e.price_book_version == "2026-06-22" for e in ctx.ledger.appended)
     assert all(e.actual_input_tokens == 100 for e in ctx.ledger.appended)
     assert all(e.actual_output_tokens == 50 for e in ctx.ledger.appended)
-    assert ctx.idempotency.stored == [
+    assert ctx.metered_receipt.stored == [
         (
             "u1",
             "idem-meter",
@@ -419,7 +436,7 @@ async def test_meter_rejects_a_project_outside_the_credential_scope() -> None:
     assert uow.rolled_back is True
     assert uow._ctx.counter_store.apply_calls == []
     assert uow._ctx.ledger.appended == []
-    assert uow._ctx.idempotency.stored == []
+    assert uow._ctx.metered_receipt.stored == []
 
 
 def test_meter_fingerprint_is_stable_and_command_sensitive() -> None:

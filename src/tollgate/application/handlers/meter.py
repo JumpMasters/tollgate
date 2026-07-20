@@ -7,7 +7,10 @@ version (ADR 0028), and the current UTC calendar-month period (ADR 0027) — the
 cost against each node's live remaining (committed up to remaining, excess as audited overage,
 ADR 0029's split) and appends one self-describing ``meter`` ledger row per node carrying the
 provider, model, and chargeback labels. An empty applicable set is rejected. One transaction;
-denials raise and roll back; only a success persists its key (section 5.1).
+denials raise and roll back; only a success persists its receipt (section 5.1). Because a meter
+applies spend with no reservation to guard it, that dedup lives in the never-reaped
+``metered_receipt`` table rather than the TTL'd ``idempotency_key``, so a retry stays exactly-once
+beyond any window instead of double-applying the spend once the key ages out (#92).
 """
 
 from __future__ import annotations
@@ -84,7 +87,9 @@ class MeterHandler:
         principal_id = auth.credential.principal_id
         ref = "truncated" if command.truncated else None
         async with self._uow.begin() as tx:
-            claim = await tx.idempotency.claim(principal_id, command.idempotency_key, fingerprint)
+            claim = await tx.metered_receipt.claim(
+                principal_id, command.idempotency_key, fingerprint
+            )
             if claim.outcome is ClaimOutcome.REPLAY:
                 response = claim.response
                 if response is None:  # pragma: no cover - a committed command always stored one
@@ -130,7 +135,7 @@ class MeterHandler:
             await tx.ledger.append(entries)
 
             result = MeterResult(actual_micro=actual, price_book_version=priced.version)
-            await tx.idempotency.store_response(
+            await tx.metered_receipt.store_response(
                 principal_id,
                 command.idempotency_key,
                 RESPONSE_SUCCEEDED,

@@ -14,7 +14,7 @@ from collections.abc import Mapping
 from datetime import datetime
 from typing import Any, Final
 
-from sqlalchemy import delete, select, tuple_, update
+from sqlalchemy import Table, delete, select, tuple_, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -29,10 +29,16 @@ _MAX_CLAIM_ATTEMPTS: Final = 3
 
 
 class PostgresIdempotencyRepository:
-    """Per-principal idempotency claim/replay on one bound connection (§5.1, #71)."""
+    """Per-principal idempotency claim/replay on one bound connection (§5.1, #71).
 
-    def __init__(self, conn: AsyncConnection) -> None:
+    The target table is injectable so the same claim/replay/mismatch mechanism serves both the
+    reaped ``idempotency_key`` table (reserve/commit/cancel, whose durable dedup lives elsewhere)
+    and the never-reaped ``metered_receipt`` table (meter/grace, which have no other backstop, #92).
+    """
+
+    def __init__(self, conn: AsyncConnection, table: Table = idempotency_key) -> None:
         self._conn = conn
+        self._table = table
 
     async def claim(self, principal_id: str, key: str, fingerprint: str) -> IdempotencyClaim:
         """Claim ``(principal_id, key)`` for ``fingerprint`` (§5.1); see the port for outcomes.
@@ -45,10 +51,10 @@ class PostgresIdempotencyRepository:
         """
         for _attempt in range(_MAX_CLAIM_ATTEMPTS):
             insert_stmt = (
-                pg_insert(idempotency_key)
+                pg_insert(self._table)
                 .values(principal_id=principal_id, key=key, command_fingerprint=fingerprint)
                 .on_conflict_do_nothing(index_elements=["principal_id", "key"])
-                .returning(idempotency_key.c.key)
+                .returning(self._table.c.key)
             )
             claimed = (await self._conn.execute(insert_stmt)).first()
             if claimed is not None:
@@ -57,11 +63,11 @@ class PostgresIdempotencyRepository:
             existing = (
                 await self._conn.execute(
                     select(
-                        idempotency_key.c.command_fingerprint,
-                        idempotency_key.c.response,
+                        self._table.c.command_fingerprint,
+                        self._table.c.response,
                     ).where(
-                        idempotency_key.c.principal_id == principal_id,
-                        idempotency_key.c.key == key,
+                        self._table.c.principal_id == principal_id,
+                        self._table.c.key == key,
                     )
                 )
             ).one_or_none()
@@ -80,10 +86,10 @@ class PostgresIdempotencyRepository:
     ) -> None:
         """Cache a command's response on its key row so a later duplicate replays it."""
         stmt = (
-            update(idempotency_key)
+            update(self._table)
             .where(
-                idempotency_key.c.principal_id == principal_id,
-                idempotency_key.c.key == key,
+                self._table.c.principal_id == principal_id,
+                self._table.c.key == key,
             )
             .values(status=status, response=dict(response))
         )
@@ -103,15 +109,15 @@ class PostgresIdempotencyRepository:
         concurrent reapers pick disjoint oldest-first batches and make progress without deadlocking.
         """
         picked = (
-            select(idempotency_key.c.principal_id, idempotency_key.c.key)
-            .where(idempotency_key.c.created_at < cutoff)
-            .order_by(idempotency_key.c.created_at)
+            select(self._table.c.principal_id, self._table.c.key)
+            .where(self._table.c.created_at < cutoff)
+            .order_by(self._table.c.created_at)
             .limit(limit)
             .with_for_update(skip_locked=True)
         )
         result = await self._conn.execute(
-            delete(idempotency_key).where(
-                tuple_(idempotency_key.c.principal_id, idempotency_key.c.key).in_(picked)
+            delete(self._table).where(
+                tuple_(self._table.c.principal_id, self._table.c.key).in_(picked)
             )
         )
         return result.rowcount

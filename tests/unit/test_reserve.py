@@ -234,6 +234,7 @@ class _Ctx:
         self.prices = prices
         self.budgets = budgets
         self.idempotency = idempotency
+        self.metered_receipt = self.idempotency
         self.reservations = reservations
         self.ledger = ledger
         self.reserve_tx = reserve_tx

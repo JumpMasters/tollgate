@@ -25,7 +25,7 @@ from testcontainers.postgres import PostgresContainer
 _DATA_TABLES = (
     "org, team, user_principal, project, api_credential, price_book, price, "
     "budget, budget_alert, budget_balance, reservation, reservation_line, "
-    "ledger, idempotency_key"
+    "ledger, idempotency_key, metered_receipt"
 )
 
 

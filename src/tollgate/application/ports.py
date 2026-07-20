@@ -301,6 +301,16 @@ class CommandContext(Protocol):
     @property
     def idempotency(self) -> IdempotencyRepository: ...
     @property
+    def metered_receipt(self) -> IdempotencyRepository:
+        """The durable, never-reaped idempotency store for the post-charge commands (#92).
+
+        Same claim/replay/mismatch interface as :attr:`idempotency`, but backed by a table the
+        reaper never touches, so meter/grace stay exactly-once beyond the idempotency-key TTL —
+        they apply spend with no reservation, so the reaped key was otherwise their only dedup.
+        """
+        ...
+
+    @property
     def reservations(self) -> ReservationRepository: ...
     @property
     def ledger(self) -> LedgerRepository: ...

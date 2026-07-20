@@ -44,12 +44,19 @@ metered calls outside the ledger and chargeback entirely.
   path. Reservation-backed rows are unaffected (their ledger `model`/`labels` stay null and the
   reservation join still wins); a grace backfill also sets no ledger `model`, so it keeps landing
   in the unattributed bucket exactly as before — only a `meter` row uses the ledger-side fallback.
-- **Idempotency via the provider's response id.** `/v1/meter` uses the same `Idempotency-Key` +
-  fingerprint-checked replay contract as every other command (ADR 0031, section 5.1). The natural
-  key for a metered call is the provider's own response id — stable across a caller's retries of
-  the *same* completed call, distinct across different calls — so the LiteLLM callback derives its
-  idempotency key from the response id, falling back to litellm's per-call id and finally a random
-  key only when neither is available.
+- **Idempotency via the provider's response id, backed by a durable receipt.** `/v1/meter` uses the
+  same `Idempotency-Key` + fingerprint-checked replay contract as every other command (ADR 0031,
+  section 5.1). The natural key for a metered call is the provider's own response id — stable across
+  a caller's retries of the *same* completed call, distinct across different calls — so the LiteLLM
+  callback derives its idempotency key from the response id, falling back to litellm's per-call id
+  and finally a random key only when neither is available. Unlike `reserve` (guarded forever by the
+  reservation `UNIQUE(principal_id, idempotency_key)`) or commit/cancel (guarded by the reservation
+  status machine), a meter or grace backfill applies spend with no reservation, so the reaped
+  `idempotency_key` row would be its *only* dedup — and a retry after that row's TTL would re-run
+  `apply_spend` and double-book the spend, possibly in the wrong period. The claim/replay therefore
+  writes to a dedicated, never-reaped `metered_receipt` table (same shape and semantics as
+  `idempotency_key`, persisting for the life of the record like a reservation row), so the
+  exactly-once guarantee holds beyond any retry window (#92).
 - **The LiteLLM callback reads chargeback labels only from `metadata["tollgate_labels"]`.**
   litellm's call `metadata` is shared with litellm-internal bookkeeping (proxy/router keys like
   `user_api_key_alias` or `model_group`), so forwarding it wholesale into chargeback labels would
@@ -94,6 +101,13 @@ metered calls outside the ledger and chargeback entirely.
 - The metering path never denies, so it carries no availability risk for the calls it observes;
   the trade is that an over-budget metered call is recorded as audited overage rather than caught
   before the fact — by construction, since the call already happened before metering runs.
+- A completed call whose principal/project is governed by *no* budget is refused (403
+  `budget_not_found`, per ADR 0020's default-deny on an empty applicable set) rather than booked —
+  so its already-incurred spend is recorded nowhere. This is intended for V1: metering requires a
+  governing budget to attribute spend against, and "never deny" means "never deny on *headroom*,"
+  not "accept ungoverned spend." Booking such spend against a synthesized/unattributed node for
+  chargeback completeness is a deliberate non-goal here, left to a future ADR if operational data
+  shows ungoverned metering is common (#99).
 - Per-class token *provenance* on the ledger (which class each committed/overage micro-USD amount
   came from) remains deferred; a metered row records total input/output token counts the same way
   a grace backfill does, not a class-by-class breakdown.
