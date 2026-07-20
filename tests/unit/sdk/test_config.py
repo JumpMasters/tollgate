@@ -11,8 +11,9 @@ def test_repr_does_not_leak_the_bearer_token() -> None:
     config = SdkConfig(base_url="http://tollgate.test", token="super-secret-token")
     rendered = repr(config)
     assert "super-secret-token" not in rendered
-    # base_url and other non-secret fields remain visible for debugging.
-    assert "http://tollgate.test" in rendered
+    # Non-secret fields remain visible for debugging; only the token is dropped from the repr.
+    assert "base_url=" in rendered
+    assert "token=" not in rendered
 
 
 def test_token_is_still_readable_at_the_http_boundary() -> None:
