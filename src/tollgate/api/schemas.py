@@ -30,7 +30,7 @@ MAX_LABELS: Final = 64
 MAX_LABEL_KEY_LEN: Final = 128
 MAX_LABEL_VALUE_LEN: Final = 256
 
-_LabelKey = Annotated[str, StringConstraints(max_length=MAX_LABEL_KEY_LEN)]
+_LabelKey = Annotated[str, StringConstraints(min_length=1, max_length=MAX_LABEL_KEY_LEN)]
 _LabelValue = Annotated[str, StringConstraints(max_length=MAX_LABEL_VALUE_LEN)]
 
 

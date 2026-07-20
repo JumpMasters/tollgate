@@ -5,10 +5,16 @@ from __future__ import annotations
 import pytest
 from fastapi import HTTPException
 
-from tollgate.api.routes.chargeback import _node_response, _parse_scope, _spend_response
+from tollgate.api.routes.chargeback import (
+    _node_response,
+    _parse_group_by_query,
+    _parse_scope,
+    _spend_response,
+)
+from tollgate.api.schemas import MAX_LABEL_KEY_LEN, MAX_STR_LEN
 from tollgate.app import build_app
 from tollgate.config.settings import Settings
-from tollgate.domain.chargeback import BudgetState, SpendGroup, SpendRollup
+from tollgate.domain.chargeback import BudgetState, GroupBy, GroupByKind, SpendGroup, SpendRollup
 from tollgate.domain.ids import BudgetId
 from tollgate.domain.invariants import Balance
 from tollgate.domain.scopes import ScopeKind, ScopeRef
@@ -27,6 +33,31 @@ def test_parse_scope_reads_kind_and_id() -> None:
 def test_parse_scope_rejects_malformed_values_as_422(bad: str) -> None:
     with pytest.raises(HTTPException) as excinfo:
         _parse_scope(bad)
+    assert excinfo.value.status_code == 422
+
+
+def test_parse_scope_rejects_an_oversized_scope_id_as_422() -> None:
+    # scope_id is otherwise unbounded on the read path; cap it like the command-path bounds (#107).
+    with pytest.raises(HTTPException) as excinfo:
+        _parse_scope("team:" + "x" * (MAX_STR_LEN + 1))
+    assert excinfo.value.status_code == 422
+
+
+def test_parse_group_by_query_reads_the_dimensions() -> None:
+    assert _parse_group_by_query("provider") == GroupBy(GroupByKind.PROVIDER)
+    assert _parse_group_by_query("label:team") == GroupBy(GroupByKind.LABEL, "team")
+
+
+@pytest.mark.parametrize("bad", ["", "unknown", "label:"])
+def test_parse_group_by_query_rejects_malformed_values_as_422(bad: str) -> None:
+    with pytest.raises(HTTPException) as excinfo:
+        _parse_group_by_query(bad)
+    assert excinfo.value.status_code == 422
+
+
+def test_parse_group_by_query_rejects_an_oversized_label_key_as_422() -> None:
+    with pytest.raises(HTTPException) as excinfo:
+        _parse_group_by_query("label:" + "k" * (MAX_LABEL_KEY_LEN + 1))
     assert excinfo.value.status_code == 422
 
 

@@ -18,6 +18,8 @@ from fastapi import APIRouter, HTTPException, Request
 
 from tollgate.api.dependencies import RequestAuth
 from tollgate.api.schemas import (
+    MAX_LABEL_KEY_LEN,
+    MAX_STR_LEN,
     BudgetAlertState,
     BudgetStateResponse,
     BudgetStatesResponse,
@@ -29,6 +31,7 @@ from tollgate.application.handlers.read import ChargebackHandler
 from tollgate.domain.chargeback import (
     BudgetState,
     BudgetStatesView,
+    GroupBy,
     SpendRollup,
     crossed_thresholds,
     parse_group_by,
@@ -52,16 +55,40 @@ _ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
 
 
 def _parse_scope(scope: str | None) -> ScopeRef | None:
-    """Parse ``<kind>:<id>`` into a :class:`ScopeRef`; ``None`` passes through. 422 on malformed."""
+    """Parse ``<kind>:<id>`` into a :class:`ScopeRef`; ``None`` passes through. 422 on malformed.
+
+    ``scope_id`` is bounded to ``MAX_STR_LEN`` to match the command-path identifier limits — the
+    read path took an otherwise unbounded query value straight into a ``WHERE`` (#107).
+    """
     if scope is None:
         return None
     kind, separator, scope_id = scope.partition(":")
-    if not separator or kind not in _SCOPE_KINDS or not scope_id:
+    if not separator or kind not in _SCOPE_KINDS or not scope_id or len(scope_id) > MAX_STR_LEN:
         raise HTTPException(
             status_code=422,
             detail="scope must be '<kind>:<id>' where kind is one of org, team, user, project",
         )
     return ScopeRef(scope_kind=ScopeKind(kind), scope_id=scope_id)
+
+
+def _parse_group_by_query(raw: str) -> GroupBy:
+    """Parse the ``group_by`` query into a :class:`GroupBy`; 422 on malformed or an oversized key.
+
+    The ``label:<key>`` form otherwise carried an unbounded key straight into the rollup grouping;
+    bound it to ``MAX_LABEL_KEY_LEN`` like the command-path label keys (#107).
+    """
+    parsed = parse_group_by(raw)
+    if parsed is None:
+        raise HTTPException(
+            status_code=422,
+            detail="group_by must be 'provider', 'model', or 'label:<key>'",
+        )
+    if parsed.label_key is not None and len(parsed.label_key) > MAX_LABEL_KEY_LEN:
+        raise HTTPException(
+            status_code=422,
+            detail=f"group_by label key must be at most {MAX_LABEL_KEY_LEN} characters",
+        )
+    return parsed
 
 
 def _node_response(state: BudgetState) -> BudgetStateResponse:
@@ -117,12 +144,7 @@ async def spend(
     period_start: datetime | None = None,
 ) -> SpendRollupResponse:
     """Realized spend for a scope node, grouped by a dimension, for one period (section 2, 5.0)."""
-    parsed = parse_group_by(group_by)
-    if parsed is None:
-        raise HTTPException(
-            status_code=422,
-            detail="group_by must be 'provider', 'model', or 'label:<key>'",
-        )
+    parsed = _parse_group_by_query(group_by)
     handler: ChargebackHandler = request.app.state.chargeback_handler
     rollup = await handler.spend_rollup(
         auth, group_by=parsed, scope=_parse_scope(scope), period_start=period_start

@@ -144,6 +144,19 @@ def test_reserve_request_rejects_oversized_label_value() -> None:
         )
 
 
+def test_reserve_request_rejects_empty_label_key() -> None:
+    # An empty-string label key is a degenerate grouping dimension; reject it on the command path
+    # to match the other bounds (#107).
+    with pytest.raises(ValidationError):
+        ReserveRequest(
+            provider="anthropic",
+            model="claude",
+            input_bound_tokens=1,
+            max_output_tokens=1,
+            labels={"": "prod"},
+        )
+
+
 def test_reserve_request_rejects_empty_project_id() -> None:
     with pytest.raises(ValidationError):
         ReserveRequest(
