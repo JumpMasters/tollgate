@@ -4,8 +4,9 @@ The current price-book version is the one with the latest ``published_at`` (ADR 
 ``version`` as a deterministic tiebreak when several versions share a ``published_at`` (#98). A
 single join from ``price`` to ``price_book``, filtered to the pair and ordered by that total
 order descending, takes the current version and its rates — or returns ``None`` when the pair is
-unpriced, which the reserve turns into an ``UnknownModel`` denial. Explicit async SQLAlchemy Core, no ORM; like the
-other repositories it never imports ``application`` and satisfies the port structurally.
+unpriced, which the reserve turns into an ``UnknownModel`` denial. Explicit async SQLAlchemy Core,
+no ORM; like the other repositories it never imports ``application`` and satisfies the port
+structurally.
 """
 
 from __future__ import annotations
