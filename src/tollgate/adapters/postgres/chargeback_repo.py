@@ -8,7 +8,9 @@ activity this period (no balance row exists yet; a read never seeds one).
 ``resolve_scope_ancestry`` returns a node's server-derived ancestry map for the authorization
 check (section 5.0). ``spend_rollup`` sums one node's own budget ledger rows for a period,
 grouped by provider, model, or a label key -- joined on ``budget`` for that single node so a
-subtree union never double-counts shared spend (section 2). ``PostgresChargebackReader`` hands
+subtree union never double-counts shared spend (section 2); a node that carries no budget of its
+own has no such ledger rows, so it raises ``BudgetNotFound`` rather than silently reporting zero
+spend (#97). ``PostgresChargebackReader`` hands
 out a repository bound to a fresh read-only connection per read. Explicit async SQLAlchemy Core,
 no ORM; satisfies the ports structurally without importing ``application``.
 """
@@ -35,6 +37,7 @@ from tollgate.adapters.postgres.schema import (
     user_principal,
 )
 from tollgate.domain.chargeback import BudgetState, GroupBy, GroupByKind, SpendGroup
+from tollgate.domain.errors import BudgetNotFound
 from tollgate.domain.ids import BudgetId
 from tollgate.domain.invariants import Balance
 from tollgate.domain.scopes import ScopeKind, scope_rank
@@ -173,6 +176,17 @@ class PostgresChargebackRepository:
         ).first()
         return None if row is None else {ScopeKind.ORG: row.org_id, ScopeKind.PROJECT: scope_id}
 
+    async def _node_has_own_budget(self, scope_kind: ScopeKind, scope_id: str) -> bool:
+        """Whether ``(scope_kind, scope_id)`` carries a budget of its own (a cheap keyed lookup)."""
+        row = (
+            await self._conn.execute(
+                select(budget.c.budget_id)
+                .where(budget.c.scope_kind == scope_kind.value, budget.c.scope_id == scope_id)
+                .limit(1)
+            )
+        ).first()
+        return row is not None
+
     async def spend_rollup(
         self,
         scope_kind: ScopeKind,
@@ -180,6 +194,13 @@ class PostgresChargebackRepository:
         period_start: datetime,
         group_by: GroupBy,
     ) -> Sequence[SpendGroup]:
+        # A single-node rollup sums only this node's own budget ledger, which already aggregates
+        # everything beneath it (ADR 0033) — but only if the node carries a budget. A budget-less
+        # node accrues no ledger rows of its own, so the aggregate would come back empty and
+        # silently report zero spend even while /v1/budgets shows the subtree's real spend. Fail
+        # explicitly so the two chargeback reads never disagree (#97).
+        if not await self._node_has_own_budget(scope_kind, scope_id):
+            raise BudgetNotFound(f"no budget at {scope_kind.value}:{scope_id} to roll up")
         led, bud, res = ledger.c, budget.c, reservation.c
         spend = func.sum(led.delta_committed_micro + led.delta_overage_micro)
         node = and_(

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from tollgate.adapters.postgres.chargeback_repo import PostgresChargebackRepository
@@ -17,6 +18,7 @@ from tollgate.adapters.postgres.schema import (
     user_principal,
 )
 from tollgate.domain.chargeback import GroupBy, GroupByKind
+from tollgate.domain.errors import BudgetNotFound
 from tollgate.domain.scopes import ScopeKind
 
 _PERIOD = datetime(2026, 7, 1, tzinfo=UTC)
@@ -352,8 +354,12 @@ async def test_other_period_and_other_node_excluded(db_conn: AsyncConnection) ->
     assert [(g.group, g.spend_micro) for g in rows] == [("anthropic", 200)]
 
 
-async def test_node_without_a_budget_is_empty(db_conn: AsyncConnection) -> None:
+async def test_node_without_a_budget_raises_budget_not_found(db_conn: AsyncConnection) -> None:
+    # A single-node rollup is only defined for a node that carries its own budget: its ledger
+    # already aggregates everything beneath it (ADR 0033). A budget-less node accrues no ledger
+    # rows of its own, so returning [] would silently report zero spend while /v1/budgets shows the
+    # subtree's real spend. Fail explicitly instead so the two reads never disagree (#97).
     await _tree(db_conn)  # team t1 has no budget
     repo = PostgresChargebackRepository(db_conn)
-    rows = await repo.spend_rollup(ScopeKind.TEAM, "t1", _PERIOD, GroupBy(GroupByKind.PROVIDER))
-    assert rows == []
+    with pytest.raises(BudgetNotFound):
+        await repo.spend_rollup(ScopeKind.TEAM, "t1", _PERIOD, GroupBy(GroupByKind.PROVIDER))
