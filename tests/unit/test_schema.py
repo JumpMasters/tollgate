@@ -47,5 +47,6 @@ def test_metadata_holds_every_expected_table() -> None:
         "reservation_line",
         "ledger",
         "idempotency_key",
+        "metered_receipt",
     }
     assert set(metadata.tables) == expected

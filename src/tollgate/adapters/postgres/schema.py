@@ -266,3 +266,23 @@ idempotency_key = Table(
     # tick is a full table scan that outgrows the worker statement timeout at volume (#63).
     Index("ix_idempotency_key_created_at", "created_at"),
 )
+
+#: A durable, never-reaped idempotency record for the post-charge commands (meter, grace backfill).
+#: Unlike reserve (guarded forever by the reservation ``UNIQUE(principal_id, idempotency_key)``) and
+#: commit/cancel (guarded by the reservation status machine), those commands apply spend with no
+#: reservation, so the reaped ``idempotency_key`` row was their ONLY dedup — and a retry after its
+#: TTL re-ran ``apply_spend`` and double-applied the spend, possibly in the wrong period (#92). This
+#: row shares ``idempotency_key``'s shape and claim/replay semantics but is never reaped, so it
+#: persists for the life of the record (like a reservation row) and the exactly-once guarantee holds
+#: beyond any retry window. No ``created_at`` index: nothing range-scans it.
+metered_receipt = Table(
+    "metered_receipt",
+    metadata,
+    Column("principal_id", Text, nullable=False),
+    Column("key", Text, nullable=False),
+    Column("command_fingerprint", Text, nullable=False),
+    Column("status", Text, nullable=True),
+    Column("response", JSONB, nullable=True),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    PrimaryKeyConstraint("principal_id", "key"),
+)

@@ -165,3 +165,33 @@ async def test_idempotent_replay_returns_the_same_result_without_double_counting
     )
     assert committed_after_second == committed_after_first
     assert await _scalar(committing_engine, "SELECT count(*) FROM ledger WHERE kind='meter'") == 2
+
+
+async def test_meter_dedup_survives_the_idempotency_key_reaper(
+    client: httpx.AsyncClient, committing_engine: AsyncEngine
+) -> None:
+    # A meter applies spend with no reservation, so its dedup once lived only in the idempotency_key
+    # row the reaper deletes at its TTL — a retry after that re-ran apply_spend and double-applied
+    # the spend (#92). The durable metered_receipt persists past the reaper, so the retry replays.
+    await _seed(committing_engine, user_limit=10_000)
+    first = await client.post("/v1/meter", json=_METER_BODY, headers=_headers("idem-meter"))
+    assert first.status_code == 200
+    committed_after_first = await _scalar(
+        committing_engine, "SELECT committed_micro FROM budget_balance WHERE budget_id = 'b-user'"
+    )
+    # The dedup record lives in metered_receipt, not idempotency_key.
+    assert await _scalar(committing_engine, "SELECT count(*) FROM metered_receipt") == 1
+    assert await _scalar(committing_engine, "SELECT count(*) FROM idempotency_key") == 0
+
+    # Simulate the idempotency-key reaper deleting every key past its TTL.
+    async with committing_engine.begin() as conn:
+        await conn.execute(text("DELETE FROM idempotency_key"))
+
+    second = await client.post("/v1/meter", json=_METER_BODY, headers=_headers("idem-meter"))
+    assert second.status_code == 200
+    assert second.json() == first.json()  # exact replay from the durable receipt
+    committed_after_second = await _scalar(
+        committing_engine, "SELECT committed_micro FROM budget_balance WHERE budget_id = 'b-user'"
+    )
+    assert committed_after_second == committed_after_first  # not double-applied past the TTL
+    assert await _scalar(committing_engine, "SELECT count(*) FROM ledger WHERE kind='meter'") == 2

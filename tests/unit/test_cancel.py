@@ -225,6 +225,7 @@ class _Ctx:
         self.prices = _FakePrices()
         self.budgets = _FakeBudgets()
         self.idempotency = idempotency
+        self.metered_receipt = self.idempotency
         self.reservations = reservations
         self.ledger = ledger
         self.reserve_tx = _StubReserveTx()

@@ -22,6 +22,7 @@ from tollgate.adapters.postgres.ledger_repo import PostgresLedgerRepository
 from tollgate.adapters.postgres.price_book_repo import PostgresPriceBookRepository
 from tollgate.adapters.postgres.reservations_repo import PostgresReservationRepository
 from tollgate.adapters.postgres.reserve_tx import PostgresReserveTransaction
+from tollgate.adapters.postgres.schema import metered_receipt
 
 
 class _PostgresCommandContext:
@@ -31,6 +32,8 @@ class _PostgresCommandContext:
         self.prices = PostgresPriceBookRepository(conn)
         self.budgets = PostgresBudgetRepository(conn)
         self.idempotency = PostgresIdempotencyRepository(conn)
+        # Same repo over the never-reaped receipt table: the durable dedup for meter/grace (#92).
+        self.metered_receipt = PostgresIdempotencyRepository(conn, table=metered_receipt)
         self.reservations = PostgresReservationRepository(conn)
         self.ledger = PostgresLedgerRepository(conn)
         self.reserve_tx = PostgresReserveTransaction(conn)

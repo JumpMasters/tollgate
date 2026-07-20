@@ -9,7 +9,10 @@ calendar-month period (ADR 0027) — then applies the actual cost against each n
 remaining (committed up to the remaining, excess as audited overage, ADR 0029's split) and
 appends one ``grace_backfill`` ledger row per node carrying both deltas. An empty applicable
 set is rejected: with no governing budget there is no balance to reconcile against. One §5
-transaction; denials raise and roll back; only a success persists its key (§5.1).
+transaction; denials raise and roll back; only a success persists its receipt (§5.1). Like the
+meter, the backfill applies spend with no reservation, so its dedup lives in the never-reaped
+``metered_receipt`` table — the "backfills exactly once" guarantee holds beyond the
+idempotency-key TTL rather than only within it (#92).
 """
 
 from __future__ import annotations
@@ -92,7 +95,9 @@ class GraceBackfillHandler:
         fingerprint = grace_backfill_fingerprint(auth.principal, command)
         principal_id = auth.credential.principal_id
         async with self._uow.begin() as tx:
-            claim = await tx.idempotency.claim(principal_id, command.idempotency_key, fingerprint)
+            claim = await tx.metered_receipt.claim(
+                principal_id, command.idempotency_key, fingerprint
+            )
             if claim.outcome is ClaimOutcome.REPLAY:
                 response = claim.response
                 if response is None:  # pragma: no cover - a committed command always stored one
@@ -135,7 +140,7 @@ class GraceBackfillHandler:
             await tx.ledger.append(entries)
 
             result = GraceBackfillResult(actual_micro=actual, price_book_version=priced.version)
-            await tx.idempotency.store_response(
+            await tx.metered_receipt.store_response(
                 principal_id,
                 command.idempotency_key,
                 RESPONSE_SUCCEEDED,

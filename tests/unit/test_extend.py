@@ -173,6 +173,7 @@ class _Ctx:
         self.prices = _StubPrices()
         self.budgets = _StubBudgets()
         self.idempotency = _NoIdempotency()
+        self.metered_receipt = self.idempotency
         self.reservations = reservations
         self.ledger = _StubLedger()
         self.reserve_tx = _StubReserveTx()
