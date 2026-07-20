@@ -1,10 +1,10 @@
-"""PostgresIdempotencyRepository: claim/replay over ``idempotency_key`` (§5.1).
+"""PostgresIdempotencyRepository: claim/replay over a per-principal idempotency table (§5.1).
 
-The unique primary key serializes duplicate commands. ``claim`` inserts the key with
-``ON CONFLICT (key) DO NOTHING … RETURNING``: a returned row means this caller claimed it
-(``FRESH``); no row means the key already exists, so the stored response is replayed
-(``REPLAY``) unless the command fingerprint differs (``MISMATCH`` = key reuse).
-``store_response`` caches the outcome on the key row at the end of the command transaction.
+The composite ``(principal_id, key)`` primary key serializes duplicate commands per principal (#71).
+``claim`` inserts the row with ``ON CONFLICT (principal_id, key) DO NOTHING … RETURNING``: a
+returned row means this caller claimed it (``FRESH``); no row means the key already exists, so the
+stored response is replayed (``REPLAY``) unless the command fingerprint differs (``MISMATCH`` = key
+reuse). ``store_response`` caches the outcome on that row at the end of the command transaction.
 Cross-transaction serialization of concurrent duplicates is exercised in plan 07.
 """
 
@@ -19,7 +19,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from tollgate.adapters.postgres.schema import idempotency_key
-from tollgate.domain.errors import EnforcementUnavailable
+from tollgate.domain.errors import EnforcementUnavailable, TollgateError
 from tollgate.domain.records import ClaimOutcome, IdempotencyClaim
 
 #: Bounded retries for the claim insert/select race against the key reaper (#70). Each retry is
@@ -84,7 +84,13 @@ class PostgresIdempotencyRepository:
     async def store_response(
         self, principal_id: str, key: str, status: str, response: Mapping[str, Any]
     ) -> None:
-        """Cache a command's response on its key row so a later duplicate replays it."""
+        """Cache a command's response on its key row so a later duplicate replays it.
+
+        Guarded: ``store_response`` only ever runs after ``claim`` inserted this row in the same
+        transaction, so it must match exactly one row. A ``rowcount`` other than one means the row
+        vanished under an invariant breach, not a client outcome; fail loud so the transaction rolls
+        back rather than silently dropping the response and leaving a keyless success behind (#107).
+        """
         stmt = (
             update(self._table)
             .where(
@@ -93,7 +99,9 @@ class PostgresIdempotencyRepository:
             )
             .values(status=status, response=dict(response))
         )
-        await self._conn.execute(stmt)
+        result = await self._conn.execute(stmt)
+        if result.rowcount != 1:
+            raise TollgateError(f"idempotency store_response matched {result.rowcount} rows, not 1")
 
     async def delete_expired(self, cutoff: datetime, limit: int) -> int:
         """Delete up to ``limit`` keys created before ``cutoff``; return the count removed (§5.5).

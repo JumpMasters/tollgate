@@ -16,6 +16,7 @@ from tollgate.domain.errors import IdempotencyKeyReuse
 from tollgate.domain.ids import BudgetId, PrincipalId, ReservationId
 from tollgate.domain.records import ReservationLineRecord, ReservationRecord
 from tollgate.domain.reservations import ReservationStatus
+from tollgate.domain.scopes import ScopeKind
 
 PERIOD = datetime(2026, 6, 1, tzinfo=UTC)
 _NOW = datetime(2026, 6, 23, 12, 0, tzinfo=UTC)
@@ -63,6 +64,29 @@ def _line(reservation_id: str = "r1", budget_id: str = "b1") -> ReservationLineR
         period_start=PERIOD,
         amount_micro=100,
     )
+
+
+async def test_find_lines_returns_the_canonical_lock_order(db_conn: AsyncConnection) -> None:
+    # find_lines returns lines already in the canonical lock order (org < user), so deadlock
+    # freedom is self-enforcing at the source rather than resting on every caller re-sorting (#107).
+    await _seed_context(db_conn)  # seeds the user budget b1
+    await db_conn.execute(
+        text(
+            "INSERT INTO budget (budget_id, scope_kind, scope_id, period_kind, hard_limit_micro) "
+            "VALUES ('b-org', 'org', 'o1', 'calendar_month', 1000)"
+        )
+    )
+    await db_conn.execute(
+        text(
+            "INSERT INTO budget_balance (budget_id, period_start, limit_micro) "
+            "VALUES ('b-org', TIMESTAMPTZ '2026-06-01 00:00:00+00', 1000)"
+        )
+    )
+    repo = PostgresReservationRepository(db_conn)
+    # Insert the user line before the org line (non-canonical) to prove the repo re-sorts.
+    await repo.insert(_record(), [_line(budget_id="b1"), _line(budget_id="b-org")])
+    lines = await repo.find_lines(ReservationId("r1"))
+    assert [line.node.scope_kind for line in lines] == [ScopeKind.ORG, ScopeKind.USER]
 
 
 async def test_reusing_a_key_maps_the_unique_violation_to_key_reuse(
