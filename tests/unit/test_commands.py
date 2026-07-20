@@ -15,6 +15,8 @@ from tollgate.domain.commands import (
     ExtendResult,
     GraceBackfillCommand,
     GraceBackfillResult,
+    MeterCommand,
+    MeterResult,
     ProviderUsage,
     ReserveCommand,
     ReserveResult,
@@ -171,6 +173,27 @@ def test_grace_backfill_result_reports_cost_and_price_basis() -> None:
     result = GraceBackfillResult(actual_micro=4_200, price_book_version="2026-06-22")
     assert result.actual_micro == 4_200
     assert result.price_book_version == "2026-06-22"
+
+
+def test_meter_command_copies_labels_read_only() -> None:
+    src = {"env": "prod"}
+    cmd = MeterCommand(
+        idempotency_key="k1",
+        provider="anthropic",
+        model="claude",
+        usage=ProviderUsage(input_tokens=100, output_tokens=50),
+        labels=src,
+    )
+    src["env"] = "dev"  # mutating the caller's dict must not change the command
+    assert cmd.labels == {"env": "prod"}
+    assert cmd.project_id is None and cmd.truncated is False
+    with pytest.raises(TypeError):
+        cmd.labels["x"] = "y"  # type: ignore[index]
+
+
+def test_meter_result_fields() -> None:
+    r = MeterResult(actual_micro=240, price_book_version="pb-1")
+    assert (r.actual_micro, r.price_book_version) == (240, "pb-1")
 
 
 def test_reserve_command_labels_are_an_immutable_copy() -> None:

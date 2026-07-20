@@ -6,10 +6,12 @@ from datetime import UTC, datetime
 
 import pytest
 
-from tollgate.domain.ids import BudgetId, PrincipalId, ReservationId
+from tollgate.domain.ids import BudgetId, LedgerEntryId, PrincipalId, ReservationId
 from tollgate.domain.records import (
     ClaimOutcome,
     IdempotencyClaim,
+    LedgerEntry,
+    LedgerKind,
     ReservationLineView,
     ReservationRecord,
     StoredReservation,
@@ -86,3 +88,29 @@ def test_idempotency_claim_response_is_an_immutable_copy() -> None:
 
 def test_idempotency_claim_without_a_response_stays_none() -> None:
     assert IdempotencyClaim(ClaimOutcome.FRESH).response is None
+
+
+def test_ledger_entry_carries_model_and_read_only_labels() -> None:
+    # LedgerKind.METER is added in Task 2; RESERVE exercises the same model/labels fields here.
+    entry = LedgerEntry(
+        entry_id=LedgerEntryId("e1"),
+        kind=LedgerKind.RESERVE,
+        budget_id=BudgetId("b1"),
+        period_start=datetime(2026, 7, 1, tzinfo=UTC),
+        model="claude",
+        labels={"env": "prod"},
+    )
+    assert entry.model == "claude"
+    assert entry.labels == {"env": "prod"}
+    with pytest.raises(TypeError):
+        entry.labels["x"] = "y"  # type: ignore[index]
+
+
+def test_ledger_entry_model_and_labels_default_to_none() -> None:
+    entry = LedgerEntry(
+        entry_id=LedgerEntryId("e1"),
+        kind=LedgerKind.RESERVE,
+        budget_id=BudgetId("b1"),
+        period_start=datetime(2026, 7, 1, tzinfo=UTC),
+    )
+    assert entry.model is None and entry.labels is None
