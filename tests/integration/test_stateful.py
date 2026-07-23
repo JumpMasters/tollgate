@@ -17,6 +17,7 @@ from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
+import pytest
 from hypothesis import HealthCheck, settings
 from hypothesis import strategies as st
 from hypothesis.stateful import Bundle, RuleBasedStateMachine, invariant, multiple, rule
@@ -35,20 +36,30 @@ from tollgate.adapters.postgres.schema import (
 )
 from tollgate.adapters.postgres.unit_of_work import PostgresUnitOfWork
 from tollgate.application.auth import AuthContext
+from tollgate.application.handlers.cancel import CancelHandler
+from tollgate.application.handlers.commit import CommitHandler
+from tollgate.application.handlers.extend import ExtendHandler
 from tollgate.application.handlers.reserve import ReserveHandler
-from tollgate.domain.commands import ReserveCommand
+from tollgate.domain.commands import (
+    CancelCommand,
+    CommitCommand,
+    ExtendCommand,
+    ProviderUsage,
+    ReserveCommand,
+)
 from tollgate.domain.credentials import Credential, CredentialStatus, Principal
-from tollgate.domain.errors import InsufficientBudget
+from tollgate.domain.errors import InsufficientBudget, ReservationNotHeld
 from tollgate.domain.ids import (
     CredentialId,
     OrgId,
     PrincipalId,
+    ReservationId,
     TeamId,
     UserId,
 )
 from tollgate.domain.invariants import Balance, node_invariants_hold
 from tollgate.domain.periods import calendar_month_start
-from tollgate.domain.pricing import ModelPrice, estimate_micro
+from tollgate.domain.pricing import ModelPrice, actual_micro, estimate_micro
 from tollgate.domain.scopes import ScopeKind
 
 if TYPE_CHECKING:
@@ -160,6 +171,35 @@ class _ReferenceModel:
             nodes=list(nodes), estimate=estimate, ttl=ttl, owner=owner
         )
 
+    def apply_commit(self, reservation_id: str, actual: int) -> None:
+        state = self.res[reservation_id]
+        if state.status == "held":
+            committed = min(actual, state.estimate)
+            overage = max(actual - state.estimate, 0)
+            for budget_id in state.nodes:
+                node = self.nodes[budget_id]
+                node.reserved -= state.estimate
+                node.committed += committed
+                node.overage += overage
+        else:  # reaped -> self-healing late commit against each node's live remaining (§5.4)
+            for budget_id in state.nodes:
+                node = self.nodes[budget_id]
+                remaining = max(node.limit - node.reserved - node.committed - node.overage, 0)
+                committed = min(actual, remaining)
+                node.committed += committed
+                node.overage += actual - committed
+        state.status = "committed"
+
+    def apply_cancel(self, reservation_id: str) -> None:
+        state = self.res[reservation_id]
+        for budget_id in state.nodes:
+            self.nodes[budget_id].reserved -= state.estimate
+        state.status = "released"
+
+    def apply_extend(self, reservation_id: str, ttl: datetime) -> None:
+        state = self.res[reservation_id]
+        state.ttl = max(state.ttl, ttl)
+
 
 async def _reset_and_seed(engine: AsyncEngine) -> None:
     """Truncate every data table and seed the fixed price book + budget tree for one example."""
@@ -260,6 +300,9 @@ class BudgetMachine(RuleBasedStateMachine):
         self.reserve_h = ReserveHandler(
             uow=uow, clock=self.clock, ids=ids, reservation_ttl_seconds=_TTL
         )
+        self.commit_h = CommitHandler(uow=uow, ids=ids)
+        self.cancel_h = CancelHandler(uow=uow, ids=ids)
+        self.extend_h = ExtendHandler(uow=uow, clock=self.clock, reservation_ttl_seconds=_TTL)
 
     def _key(self) -> str:
         self.counter += 1
@@ -293,6 +336,64 @@ class BudgetMachine(RuleBasedStateMachine):
             result.reservation_id, nodes, estimate, self.clock.now() + timedelta(seconds=_TTL), user
         )
         return result.reservation_id
+
+    @rule(
+        res=reservations,
+        inp=st.integers(min_value=0, max_value=600),
+        out=st.integers(min_value=0, max_value=600),
+        cached=st.integers(min_value=0, max_value=600),
+        cc=st.integers(min_value=0, max_value=200),
+    )
+    def commit(self, res: str, inp: int, out: int, cached: int, cc: int) -> None:
+        cached = min(cached, inp)
+        state = self.model.res[res]
+        usage = ProviderUsage(
+            input_tokens=inp,
+            output_tokens=out,
+            cached_input_tokens=cached,
+            cache_creation_tokens=cc,
+        )
+        actual = actual_micro(
+            _PRICE,
+            input_tokens=inp,
+            output_tokens=out,
+            cached_input_tokens=cached,
+            cache_creation_tokens=cc,
+        )
+        command = CommitCommand(
+            idempotency_key=self._key(), reservation_id=ReservationId(res), usage=usage
+        )
+        auth = _auth_for(state.owner)
+        if state.status in ("committed", "released"):
+            with pytest.raises(ReservationNotHeld):
+                _run(self.commit_h.commit(auth, command))
+            return
+        _run(self.commit_h.commit(auth, command))  # held -> reconcile; reaped -> self-heal
+        self.model.apply_commit(res, actual)
+
+    @rule(res=reservations)
+    def cancel(self, res: str) -> None:
+        state = self.model.res[res]
+        command = CancelCommand(idempotency_key=self._key(), reservation_id=ReservationId(res))
+        auth = _auth_for(state.owner)
+        if state.status == "held":
+            _run(self.cancel_h.cancel(auth, command))
+            self.model.apply_cancel(res)
+        else:
+            with pytest.raises(ReservationNotHeld):
+                _run(self.cancel_h.cancel(auth, command))
+
+    @rule(res=reservations)
+    def extend(self, res: str) -> None:
+        state = self.model.res[res]
+        command = ExtendCommand(reservation_id=ReservationId(res))
+        auth = _auth_for(state.owner)
+        if state.status == "held":
+            result = _run(self.extend_h.extend(auth, command))
+            self.model.apply_extend(res, result.ttl_deadline)
+        else:
+            with pytest.raises(ReservationNotHeld):
+                _run(self.extend_h.extend(auth, command))
 
     @invariant()
     def db_matches_model(self) -> None:
