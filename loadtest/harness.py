@@ -16,6 +16,9 @@ strategies are deliberately-flawed strawmen; only the guarded write is the produ
 
 from __future__ import annotations
 
+import asyncio
+import random
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
@@ -24,6 +27,7 @@ from typing import Protocol
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
+from loadtest.oracle import Check, evaluate
 from tollgate.domain.invariants import Balance
 
 NodeKey = tuple[str, datetime]
@@ -118,6 +122,151 @@ def _overspend_micro(balances: dict[NodeKey, Balance]) -> int:
     return sum(
         max(b.reserved_micro + b.committed_micro + b.overage_micro - b.limit_micro, 0)
         for b in balances.values()
+    )
+
+
+_BALANCE_CHECKS: frozenset[Check] = frozenset(
+    {Check.NON_NEGATIVE, Check.NO_BREACH, Check.STORAGE_GUARD}
+)
+_AMOUNTS = (50, 100, 150, 200)  # per-reserve demand, drawn from a seeded RNG
+
+
+@dataclass(frozen=True, slots=True)
+class RunMetrics:
+    """One strategy's shootout result: throughput, tail latency, and the overspend it admitted."""
+
+    strategy: str
+    concurrency: int
+    ops: int
+    admitted: int
+    denied: int
+    retries: int
+    throughput_ops_per_s: float
+    p99_ms: float
+    overspend_micro: int
+    violations: tuple[str, ...]
+
+
+async def _worker(
+    conn: AsyncConnection,
+    strategy: ReserveStrategy,
+    tree: HarnessTree,
+    *,
+    worker_id: int,
+    ops_per_worker: int,
+    seed: int,
+    barrier: asyncio.Barrier,
+) -> tuple[int, int, int, list[float]]:
+    """Run one worker's seeded reserve sequence on a PRE-OPENED connection; return the tallies.
+
+    All workers wait on ``barrier`` before their first op so their reads overlap in time. The naive
+    check-then-act breach only surfaces when a read happens before other workers' writes commit; a
+    synchronized start on already-open connections makes that reliable rather than timing-dependent
+    (opening a fresh connection per op serialises the workers and hides the contention). Returns
+    ``(admitted, denied, retries, latencies_s)``.
+    """
+    rng = random.Random((seed << 16) ^ worker_id)
+    child = tree.child_ids[worker_id % len(tree.child_ids)]
+    nodes = [tree.parent_id, child]
+    admitted = denied = retries = 0
+    latencies: list[float] = []
+    for op in range(ops_per_worker):
+        amount = rng.choice(_AMOUNTS)
+        if op == 0:
+            await barrier.wait()  # release all workers together so their first reads overlap
+        started = time.perf_counter()
+        txn = await conn.begin()
+        try:
+            outcome = await strategy.reserve(conn, nodes, tree.period, amount)
+        except Exception:
+            await txn.rollback()
+            raise
+        if outcome.admitted:
+            await txn.commit()
+        else:
+            await txn.rollback()
+        latencies.append(time.perf_counter() - started)
+        retries += outcome.retries
+        if outcome.admitted:
+            admitted += 1
+        else:
+            denied += 1
+    return admitted, denied, retries, latencies
+
+
+def _p99_ms(latencies: Sequence[float]) -> float:
+    """The 99th-percentile latency in milliseconds (nearest-rank; 0.0 for an empty sample)."""
+    if not latencies:
+        return 0.0
+    ordered = sorted(latencies)
+    index = min(len(ordered) - 1, int(len(ordered) * 0.99))
+    return ordered[index] * 1000.0
+
+
+async def run_strategy(
+    engine: AsyncEngine,
+    strategy: ReserveStrategy,
+    *,
+    tree: HarnessTree,
+    concurrency: int,
+    ops_per_worker: int,
+    seed: int,
+) -> RunMetrics:
+    """Drive ``concurrency`` workers against ``strategy`` on the hot tree, then audit the result.
+
+    Every worker commits its admitted reserves so the contention on the shared parent row is real.
+    After the run the ``harness_balance`` rows are audited with the oracle's balance-tier checks and
+    the admitted overspend is summed — zero for a correct guard, positive for the naive strawman.
+    """
+    async with engine.begin() as conn:
+        await _ensure_harness_balance(conn)
+        await _seed_harness_balance(conn, tree)
+    # Pre-open one committing connection per worker OUTSIDE the timed section: connection-setup
+    # latency would otherwise serialise the workers and hide the contention. A barrier then starts
+    # them together so the naive over-admission is reliable, not timing-dependent.
+    conns = [await engine.connect() for _ in range(concurrency)]
+    barrier = asyncio.Barrier(concurrency)
+    try:
+        started = time.perf_counter()
+        results = await asyncio.gather(
+            *(
+                _worker(
+                    conns[i],
+                    strategy,
+                    tree,
+                    worker_id=i,
+                    ops_per_worker=ops_per_worker,
+                    seed=seed,
+                    barrier=barrier,
+                )
+                for i in range(concurrency)
+            )
+        )
+        elapsed = time.perf_counter() - started
+    finally:
+        for conn in conns:
+            await conn.close()
+    admitted = sum(r[0] for r in results)
+    denied = sum(r[1] for r in results)
+    retries = sum(r[2] for r in results)
+    latencies = [lat for r in results for lat in r[3]]
+    async with engine.connect() as conn:
+        balances = await _read_harness_balances(conn)
+    report = evaluate(
+        balances=balances, ledger_rows=[], reservations=[], tree_edges=[], checks=_BALANCE_CHECKS
+    )
+    total_ops = concurrency * ops_per_worker
+    return RunMetrics(
+        strategy=strategy.name,
+        concurrency=concurrency,
+        ops=total_ops,
+        admitted=admitted,
+        denied=denied,
+        retries=retries,
+        throughput_ops_per_s=total_ops / elapsed if elapsed > 0 else 0.0,
+        p99_ms=_p99_ms(latencies),
+        overspend_micro=_overspend_micro(balances),
+        violations=tuple(sorted({v.check.value for v in report.violations})),
     )
 
 

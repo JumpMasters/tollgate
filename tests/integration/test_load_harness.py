@@ -15,6 +15,7 @@ from loadtest.harness import (
     _ensure_harness_balance,
     _read_harness_balances,
     _seed_harness_balance,
+    run_strategy,
 )
 from sqlalchemy.ext.asyncio import AsyncEngine
 
@@ -92,5 +93,67 @@ async def test_occ_admits_uncontended_and_denies_when_full(committing_engine: As
         assert await _one_reserve(committing_engine, OccStrategy(), ["p", "c0"], 60) is True
         assert await _one_reserve(committing_engine, OccStrategy(), ["p", "c0"], 60) is False
         assert await _reserved(committing_engine, "p") == 60
+    finally:
+        await _drop_harness_balance(committing_engine)
+
+
+def _hot_tree() -> HarnessTree:
+    # parent headroom (1000) is far below total demand (32 workers x up to 4 reserves x ~100),
+    # so an unguarded admission policy over-admits the shared parent.
+    return HarnessTree(
+        parent_id="p",
+        parent_limit=1000,
+        child_ids=tuple(f"c{i}" for i in range(8)),
+        child_limit=100_000,
+        period=_PERIOD,
+    )
+
+
+async def test_guarded_never_overspends(committing_engine: AsyncEngine) -> None:
+    try:
+        metrics = await run_strategy(
+            committing_engine,
+            GuardedStrategy(),
+            tree=_hot_tree(),
+            concurrency=32,
+            ops_per_worker=4,
+            seed=1,
+        )
+        assert metrics.overspend_micro == 0
+        assert metrics.violations == ()  # oracle balance-tier checks clean
+    finally:
+        await _drop_harness_balance(committing_engine)
+
+
+async def test_naive_breaches_the_parent(committing_engine: AsyncEngine) -> None:
+    try:
+        metrics = await run_strategy(
+            committing_engine,
+            NaiveStrategy(),
+            tree=_hot_tree(),
+            concurrency=32,
+            ops_per_worker=4,
+            seed=1,
+        )
+        # the demonstration: an unguarded admission policy over-admits, and the oracle catches it
+        assert metrics.overspend_micro > 0
+        assert "storage_guard" in metrics.violations
+    finally:
+        await _drop_harness_balance(committing_engine)
+
+
+async def test_occ_is_correct_but_thrashes(committing_engine: AsyncEngine) -> None:
+    try:
+        metrics = await run_strategy(
+            committing_engine,
+            OccStrategy(),
+            tree=_hot_tree(),
+            concurrency=32,
+            ops_per_worker=4,
+            seed=1,
+        )
+        assert metrics.overspend_micro == 0  # correct
+        assert metrics.violations == ()
+        assert metrics.retries > 0  # but the hot row thrashes
     finally:
         await _drop_harness_balance(committing_engine)
