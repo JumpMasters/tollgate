@@ -243,7 +243,8 @@ def evaluate(
     return OracleReport(violations=tuple(violations))
 
 
-async def _load_balances(conn: AsyncConnection) -> dict[NodeKey, Balance]:
+async def load_balances(conn: AsyncConnection) -> dict[NodeKey, Balance]:
+    """Load every ``budget_balance`` row as an oracle ``Balance`` keyed by (budget_id, period)."""
     result = await conn.execute(
         select(
             budget_balance.c.budget_id,
@@ -332,7 +333,7 @@ async def load_and_check(
 ) -> OracleReport:
     """Load a finished run's rows from Postgres and run the selected checks (§7, ADR 0011)."""
     return evaluate(
-        balances=await _load_balances(conn),
+        balances=await load_balances(conn),
         ledger_rows=await _load_ledger(conn),
         reservations=await _load_reservations(conn),
         tree_edges=await _load_tree_edges(conn),
