@@ -123,6 +123,26 @@ async def test_reserve_headroom_accounts_for_committed_and_overage(
     assert await _balance(db_conn) == (1000, 200, 500, 300)
 
 
+async def test_zero_cost_reserve_is_admitted_even_at_an_overspent_node(
+    db_conn: AsyncConnection,
+) -> None:
+    await _seed_budget(db_conn, limit=1000)
+    store = PostgresCounterStore(db_conn)
+    await store.ensure_period(BudgetId("b1"), PERIOD)
+    # Drive the node past its limit: committed 1000 + overage 300 → remaining = -300.
+    await db_conn.execute(
+        text(
+            "UPDATE budget_balance SET committed_micro = 1000, overage_micro = 300 "
+            "WHERE budget_id = 'b1'"
+        )
+    )
+    # A positive reserve is still denied (no headroom); a zero-cost hold holds nothing and so
+    # can never breach the invariant, so it is admitted even here (#127).
+    assert await store.reserve(BudgetId("b1"), PERIOD, 1) is False
+    assert await store.reserve(BudgetId("b1"), PERIOD, 0) is True
+    assert await _balance(db_conn) == (1000, 0, 1000, 300)  # unchanged: a zero hold
+
+
 # --- commit (reconcile) and release ----------------------------------------
 
 
