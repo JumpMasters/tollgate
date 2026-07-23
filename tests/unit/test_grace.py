@@ -351,6 +351,16 @@ async def test_backfill_records_spend_on_every_applicable_node() -> None:
     assert uow.committed is True
 
 
+async def test_backfill_stamps_the_model_so_spend_attributes_by_model() -> None:
+    # A grace row has no reservation to join to, so the model must live on the ledger row itself —
+    # otherwise model-grouped chargeback drops the spend into the null bucket (#122).
+    handler, uow = _build()
+    await handler.backfill(_auth(), _command())
+    appended = uow._ctx.ledger.appended
+    assert len(appended) == 2
+    assert all(e.model == "claude" for e in appended)
+
+
 async def test_backfill_replays_a_stored_response_without_reapplying() -> None:
     stored = {"actual_micro": 190, "price_book_version": "2026-06-01"}
     handler, uow = _build(idem_outcome=ClaimOutcome.REPLAY, idem_response=stored)

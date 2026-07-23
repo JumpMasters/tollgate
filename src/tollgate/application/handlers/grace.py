@@ -133,6 +133,7 @@ class GraceBackfillHandler:
                         actual_input_tokens=command.usage.input_tokens,
                         actual_output_tokens=command.usage.output_tokens,
                         provider=command.provider,
+                        model=command.model,
                         price_book_version=priced.version,
                     )
                 )

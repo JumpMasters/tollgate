@@ -119,6 +119,30 @@ def test_unmapped_error_does_not_echo_its_internal_message() -> None:
     assert leak not in body["error"]["message"]
 
 
+def test_mapped_5xx_does_not_echo_internal_exception_text() -> None:
+    # A mapped 500 must carry the generic message, never the exception's own internal string
+    # (e.g. a budget id and period timestamp); only 4xx messages name the caller's own node (#123).
+    leak = "reserve guard matched 0 rows for budget b-abc period 2026-06-01T00:00:00+00:00"
+    response = _client_raising(BalanceGuardViolation(leak)).get("/boom")
+    assert response.status_code == 500
+    body = response.json()
+    assert body["error"]["code"] == "balance_guard_violation"
+    assert body["error"]["message"] == "balance guard matched no row"
+    assert leak not in body["error"]["message"]
+
+
+def test_directly_raised_503_does_not_echo_internal_detail() -> None:
+    # A directly-raised EnforcementUnavailable carrying a diagnostic string must still surface the
+    # generic 503 message, matching how the connectivity handler sanitizes the driver's text (#123).
+    leak = "idempotency claim did not converge under reaper contention"
+    response = _client_raising(EnforcementUnavailable(leak)).get("/boom")
+    assert response.status_code == 503
+    body = response.json()
+    assert body["error"]["code"] == "enforcement_unavailable"
+    assert body["error"]["message"] == "enforcement datastore unavailable"
+    assert leak not in body["error"]["message"]
+
+
 def test_unexpected_exception_is_enveloped_not_plain_text() -> None:
     # A non-Tollgate, non-datastore exception (a genuine bug) must still return the ADR 0031
     # envelope, not Starlette's plain-text "Internal Server Error" (#101).

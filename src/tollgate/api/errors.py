@@ -95,7 +95,10 @@ def _error_response(exc: TollgateError) -> JSONResponse:
         status, code, message = _FALLBACK
     else:
         status, code, default_message = mapped
-        message = str(exc) or default_message
+        # A 5xx is an internal-error envelope: its exception text can carry internal identifiers
+        # or diagnostics (a budget id, a period, a driver message), so it must never reach the
+        # client. Only 4xx messages usefully name the caller's own binding node/scope (#123).
+        message = default_message if status >= 500 else (str(exc) or default_message)
     headers = {"WWW-Authenticate": "Bearer"} if status == 401 else None
     return _envelope(status, code, message, headers=headers)
 
