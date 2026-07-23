@@ -64,6 +64,7 @@ def reserve_fingerprint(principal: Principal, command: ReserveCommand) -> str:
             "model": command.model,
             "input_bound_tokens": command.input_bound_tokens,
             "max_output_tokens": command.max_output_tokens,
+            "cache_creation_bound_tokens": command.cache_creation_bound_tokens,
             "project_id": command.project_id,
             "labels": dict(command.labels),
         }
@@ -147,6 +148,7 @@ class ReserveHandler:
                 priced.price,
                 input_bound_tokens=command.input_bound_tokens,
                 max_output_tokens=command.max_output_tokens,
+                cache_creation_bound_tokens=command.cache_creation_bound_tokens,
             )
             now = self._clock.now()
             period_start = calendar_month_start(now)

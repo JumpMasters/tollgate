@@ -137,6 +137,7 @@ async def guard(
     model: str,
     prompt: str,
     max_output_tokens: int | None = None,
+    cache_creation_bound_tokens: int = 0,
     project: str | None = None,
     labels: dict[str, str] | None = None,
     idempotency_key: str | None = None,
@@ -149,6 +150,11 @@ async def guard(
     never dispatches. On exit the reservation is always resolved by :func:`_finalize`: recorded
     usage is real, provider-billed spend and is committed whether the body exited cleanly or
     raised; only a call that recorded no usage is cancelled.
+
+    ``cache_creation_bound_tokens`` is an optional caller-declared upper bound on tokens the call
+    intends to write to the provider's prompt cache; the caller declares it (the tokenizer does
+    not estimate it), and it is forwarded to the reserve so the worst-case cache-write cost is
+    held up front. It defaults to ``0`` — a caller that writes no cache reserves exactly as before.
 
     ``new_key`` must return a fresh value on every call: reserve (when no explicit
     ``idempotency_key`` is given), commit, and cancel each call it once, and a constant generator
@@ -169,6 +175,7 @@ async def guard(
         model=model,
         input_bound_tokens=bound,
         max_output_tokens=max_output_tokens,
+        cache_creation_bound_tokens=cache_creation_bound_tokens,
         idempotency_key=idempotency_key or new_key(),
         project=project,
         labels=labels,

@@ -450,6 +450,32 @@ def test_reserve_fingerprint_is_stable_and_command_sensitive() -> None:
     assert reserve_fingerprint(principal, reordered) == reserve_fingerprint(principal, other_order)
 
 
+def test_reserve_fingerprint_is_sensitive_to_the_cache_creation_bound() -> None:
+    # A retry declaring a different cache-creation bound is a different worst-case cost, so it is
+    # key reuse; the same bound matches.
+    principal = _principal()
+    base = _command()
+    assert reserve_fingerprint(principal, base) == reserve_fingerprint(
+        principal, replace(base, cache_creation_bound_tokens=0)
+    )
+    assert reserve_fingerprint(principal, base) != reserve_fingerprint(
+        principal, replace(base, cache_creation_bound_tokens=50)
+    )
+
+
+async def test_reserve_holds_the_larger_estimate_when_a_cache_creation_bound_is_declared() -> None:
+    # cache_creation rate is 1.25; declaring an 80-token cache-write bound adds ceil(80*1.25)=100
+    # to the 300 base, and the guarded reserve holds that larger worst-case on every node.
+    handler, uow = _build()
+    result = await handler.reserve(_auth(), _command(cache_creation_bound_tokens=80))
+    assert result.estimated_micro == 400
+    ctx = uow._ctx
+    assert ctx.reserve_tx.calls == [([_ORG_NODE, _USER_NODE], _PERIOD, 400)]
+    record, lines = ctx.reservations.inserted  # type: ignore[misc]
+    assert record.estimated_micro == 400
+    assert all(line.amount_micro == 400 for line in lines)
+
+
 def test_reserve_fingerprint_folds_the_command_discriminator() -> None:
     # Every other command folds a "command" key so two command kinds can't collide under one key;
     # reserve folds it too, for symmetry and defense-in-depth (#106).
@@ -463,6 +489,7 @@ def test_reserve_fingerprint_folds_the_command_discriminator() -> None:
             "model": command.model,
             "input_bound_tokens": command.input_bound_tokens,
             "max_output_tokens": command.max_output_tokens,
+            "cache_creation_bound_tokens": command.cache_creation_bound_tokens,
             "project_id": command.project_id,
             "labels": dict(command.labels),
         }

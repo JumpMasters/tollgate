@@ -63,6 +63,7 @@ class ReserveRequest(_RequestModel):
     model: str = Field(min_length=1, max_length=MAX_STR_LEN)
     input_bound_tokens: int = Field(ge=0, le=MAX_TOKENS)
     max_output_tokens: int = Field(ge=0, le=MAX_TOKENS)
+    cache_creation_bound_tokens: int = Field(default=0, ge=0, le=MAX_TOKENS)
     labels: dict[_LabelKey, _LabelValue] = Field(default_factory=dict, max_length=MAX_LABELS)
     project_id: str | None = Field(default=None, min_length=1, max_length=MAX_STR_LEN)
 

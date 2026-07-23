@@ -28,6 +28,46 @@ def test_reserve_request_defaults() -> None:
     assert request.project_id is None
 
 
+def test_reserve_request_defaults_cache_creation_bound_to_zero() -> None:
+    request = ReserveRequest(
+        provider="anthropic", model="claude", input_bound_tokens=100, max_output_tokens=100
+    )
+    assert request.cache_creation_bound_tokens == 0
+
+
+def test_reserve_request_accepts_a_cache_creation_bound() -> None:
+    request = ReserveRequest(
+        provider="anthropic",
+        model="claude",
+        input_bound_tokens=100,
+        max_output_tokens=100,
+        cache_creation_bound_tokens=50,
+    )
+    assert request.cache_creation_bound_tokens == 50
+
+
+def test_reserve_request_rejects_negative_cache_creation_bound() -> None:
+    with pytest.raises(ValidationError):
+        ReserveRequest(
+            provider="anthropic",
+            model="claude",
+            input_bound_tokens=100,
+            max_output_tokens=100,
+            cache_creation_bound_tokens=-1,
+        )
+
+
+def test_reserve_request_rejects_cache_creation_bound_above_the_ceiling() -> None:
+    with pytest.raises(ValidationError):
+        ReserveRequest(
+            provider="anthropic",
+            model="claude",
+            input_bound_tokens=1,
+            max_output_tokens=1,
+            cache_creation_bound_tokens=MAX_TOKENS + 1,
+        )
+
+
 def test_reserve_request_rejects_negative_tokens() -> None:
     with pytest.raises(ValidationError):
         ReserveRequest(
