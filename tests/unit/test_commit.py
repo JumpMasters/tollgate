@@ -126,6 +126,27 @@ class _FakeIdempotency:
         raise AssertionError("this handler never reaps keys")
 
 
+class _TripwireIdempotency:
+    """Stands in for the TTL-reaped idempotency store. Commit and cancel must dedup via the
+    durable metered_receipt (#125), so any call here is a regression to the path that loses its
+    response replay once the key ages out."""
+
+    async def claim(self, principal_id: str, key: str, fingerprint: str) -> IdempotencyClaim:
+        raise AssertionError(
+            "commit and cancel must dedup via the durable metered_receipt, not idempotency (#125)"
+        )
+
+    async def store_response(
+        self, principal_id: str, key: str, response: Mapping[str, Any]
+    ) -> None:
+        raise AssertionError(
+            "commit and cancel must dedup via the durable metered_receipt, not idempotency (#125)"
+        )
+
+    async def delete_expired(self, cutoff: datetime, limit: int) -> int:
+        raise AssertionError("commit and cancel never reap")
+
+
 class _FakeReservations:
     def __init__(
         self,
@@ -255,8 +276,8 @@ class _Ctx:
     ) -> None:
         self.prices = prices
         self.budgets = _FakeBudgets()
-        self.idempotency = idempotency
-        self.metered_receipt = self.idempotency
+        self.metered_receipt = idempotency
+        self.idempotency = _TripwireIdempotency()
         self.reservations = reservations
         self.ledger = ledger
         self.reserve_tx = _StubReserveTx()
@@ -347,7 +368,7 @@ async def test_commit_reconciles_and_persists_the_envelope() -> None:
     assert all(e.actual_input_tokens == 100 for e in ctx.ledger.appended)
     assert all(e.actual_output_tokens == 50 for e in ctx.ledger.appended)
     assert all(e.price_book_version == "2026-06-22" for e in ctx.ledger.appended)
-    assert ctx.idempotency.stored == [
+    assert ctx.metered_receipt.stored == [
         (
             "u1",
             "idem-commit",
@@ -437,7 +458,7 @@ async def test_commit_of_a_settled_reservation_is_rejected() -> None:
     with pytest.raises(ReservationNotHeld):
         await handler.commit(_auth(), _command())
     assert uow._ctx.counter_store.commit_calls == []
-    assert uow._ctx.idempotency.stored == []
+    assert uow._ctx.metered_receipt.stored == []
     assert uow.rolled_back is True
 
 

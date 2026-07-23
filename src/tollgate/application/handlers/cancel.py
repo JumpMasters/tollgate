@@ -1,12 +1,17 @@
 """The cancel command handler: release a held reservation's full estimate.
 
 The call failed before incurring usage, so the whole worst-case hold goes back: claim the
-idempotency key, load and authorize the reservation, claim the identity guard
+dedup key, load and authorize the reservation, claim the identity guard
 (``held → released``), release every line in canonical lock order, append the ``release``
 ledger rows, cache the response — one transaction. Cancel has **no** self-heal path: a
 reaped reservation was already released by the reaper, so a cancel that lost the guard is
 rejected with :class:`ReservationNotHeld` (the release effect happened exactly once either
-way). Denials raise and roll back; only a success persists its key.
+way). Denials raise and roll back; only a success persists its response. The identity guard
+(``claim_terminal``) is the exactly-once backstop here, so this response cache exists only to
+replay the original result — and it lives on the never-reaped ``metered_receipt`` table rather
+than the TTL'd ``idempotency_key``, so a retry after the key's TTL replays the cached success
+instead of re-claiming as fresh and failing the settled-status guard with an ambiguous
+:class:`ReservationNotHeld` (#125).
 """
 
 from __future__ import annotations
@@ -72,12 +77,16 @@ class CancelHandler:
 
         Raises :class:`ScopeNotAuthorized` for an unknown or foreign reservation (identically —
         no existence leak), :class:`ReservationNotHeld` when the reservation already settled
-        (committed, released, or reaped), and :class:`IdempotencyKeyReuse` on key reuse.
+        (committed, released, or reaped), and :class:`IdempotencyKeyReuse` on key reuse. A retry
+        under the same key replays the cached result from the durable ``metered_receipt`` (never
+        reaped), even past the idempotency-key TTL (#125).
         """
         fingerprint = cancel_fingerprint(auth.principal, command)
         principal_id = auth.credential.principal_id
         async with self._uow.begin() as tx:
-            claim = await tx.idempotency.claim(principal_id, command.idempotency_key, fingerprint)
+            claim = await tx.metered_receipt.claim(
+                principal_id, command.idempotency_key, fingerprint
+            )
             if claim.outcome is ClaimOutcome.REPLAY:
                 response = claim.response
                 if response is None:  # pragma: no cover - a committed command always stored one
@@ -116,7 +125,7 @@ class CancelHandler:
                 reservation_id=command.reservation_id,
                 released_micro=stored.record.estimated_micro,
             )
-            await tx.idempotency.store_response(
+            await tx.metered_receipt.store_response(
                 principal_id,
                 command.idempotency_key,
                 _result_to_response(result),
