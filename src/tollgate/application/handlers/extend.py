@@ -1,10 +1,10 @@
-"""The extend command handler: the reservation heartbeat (§4, §5.4).
+"""The extend command handler: the reservation heartbeat.
 
 A long-running or streaming call advances its reservation's ``ttl_deadline`` so the reaper
 never treats a live call as abandoned. Extend is **monotonic** — the adapter's ``GREATEST``
 keeps the stored deadline from ever moving backward — which makes it naturally idempotent, so
-it carries no idempotency key and skips that step of the §5 envelope; it still runs inside the
-``UnitOfWork`` so the ownership check and the advance commit atomically. It touches no
+it carries no idempotency key and skips that step of the command envelope; it still runs inside
+the ``UnitOfWork`` so the ownership check and the advance commit atomically. It touches no
 balances and appends no ledger rows: a heartbeat is liveness, not spend.
 """
 
@@ -20,7 +20,7 @@ from tollgate.domain.errors import ReservationNotHeld
 
 
 class ExtendHandler:
-    """Runs the extend heartbeat inside one transaction (§5.4)."""
+    """Runs the extend heartbeat inside one transaction."""
 
     def __init__(self, *, uow: UnitOfWork, clock: Clock, reservation_ttl_seconds: int) -> None:
         self._uow = uow
@@ -28,7 +28,7 @@ class ExtendHandler:
         self._ttl_seconds = reservation_ttl_seconds
 
     async def extend(self, auth: AuthContext, command: ExtendCommand) -> ExtendResult:
-        """Advance the reservation's TTL to now + the configured window (§5.4).
+        """Advance the reservation's TTL to now + the configured window.
 
         Returns the deadline actually stored — never earlier than what was already there
         (monotonic). Raises :class:`ScopeNotAuthorized` for an unknown or foreign reservation

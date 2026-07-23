@@ -1,4 +1,4 @@
-"""Unit tests for the extend handler: the monotonic §5.4 heartbeat (no idempotency key)."""
+"""Unit tests for the extend handler: the monotonic heartbeat (no idempotency key)."""
 
 from __future__ import annotations
 
@@ -104,7 +104,7 @@ class _FakeReservations:
 
 class _NoIdempotency:
     async def claim(self, principal_id: str, key: str, fingerprint: str) -> IdempotencyClaim:
-        raise AssertionError("extend is naturally idempotent and needs no key (§4)")
+        raise AssertionError("extend is naturally idempotent and needs no key")
 
     async def store_response(
         self, principal_id: str, key: str, response: Mapping[str, Any]

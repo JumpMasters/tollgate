@@ -1,4 +1,4 @@
-"""Route dependencies: bearer-credential authentication (section 5.0, ADR 0031).
+"""Route dependencies: bearer-credential authentication (ADR 0031).
 
 The composition root places an authenticate callable on ``app.state``; the
 dependency extracts the RFC 6750 bearer token and resolves it to an

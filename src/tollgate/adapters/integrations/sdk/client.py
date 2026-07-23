@@ -14,7 +14,7 @@ from tollgate.adapters.integrations.sdk.errors import EnforcementUnavailable, er
 
 @dataclass(frozen=True, slots=True)
 class ProviderUsage:
-    """Provider-reported token counts for a commit — never caller-asserted (section 4)."""
+    """Provider-reported token counts for a commit — never caller-asserted."""
 
     input_tokens: int
     output_tokens: int

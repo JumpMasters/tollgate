@@ -1,11 +1,11 @@
-"""PostgresCounterStore: invariant-guarded budget-balance primitives (§5.2).
+"""PostgresCounterStore: invariant-guarded budget-balance primitives.
 
 Single-node ``reserve`` / ``commit`` / ``release`` over ``budget_balance``, plus a
 lazy period-roll. Written as explicit SQLAlchemy Core statements — the ``WHERE``
 clause is the guard, so an over-budget reserve matches zero rows and is denied with
 no read-modify-write gap and no version column. The store binds the active command
 transaction's connection; the multi-budget orchestration (deterministic order,
-all-or-nothing) lives a layer up (plan 07).
+all-or-nothing) lives a layer up.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ class PostgresCounterStore:
         self._conn = conn
 
     async def ensure_period(self, budget_id: BudgetId, period_start: datetime) -> None:
-        """Create the period's balance row, seeded from the budget's limit (§5.3/§5.5).
+        """Create the period's balance row, seeded from the budget's limit.
 
         ``INSERT … SELECT hard_limit_micro FROM budget … ON CONFLICT DO NOTHING`` so a
         concurrent first-reserver in the same new period converges on one row instead
@@ -61,7 +61,7 @@ class PostgresCounterStore:
         await self._conn.execute(stmt)
 
     async def reserve(self, budget_id: BudgetId, period_start: datetime, amount_micro: int) -> bool:
-        """Guarded reserve: succeed iff the node has headroom (§5.2).
+        """Guarded reserve: succeed iff the node has headroom.
 
         ``remaining = limit - reserved - committed - overage``; the conditional
         ``WHERE`` is the guard, so zero rows updated means no headroom → denied.
@@ -91,7 +91,7 @@ class PostgresCounterStore:
     ) -> None:
         """Reconcile: move at most the reserved estimate; record any excess as overage.
 
-        Mirrors the §5.2 commit guard. ``reserved_micro >= :est`` keeps ``reserved``
+        Mirrors the commit guard. ``reserved_micro >= :est`` keeps ``reserved``
         non-negative; the committed / overage split is ``LEAST`` / ``GREATEST``.
         ``actual_micro`` and ``reserved_micro`` are both known scalars here, so the
         split is computed directly (matching ``domain.pricing.reconcile``).
@@ -145,7 +145,7 @@ class PostgresCounterStore:
     async def apply_spend(
         self, budget_id: BudgetId, period_start: datetime, amount_micro: int
     ) -> Reconciliation:
-        """Apply already-incurred spend against live remaining; return the split (§5.4/§5.6).
+        """Apply already-incurred spend against live remaining; return the split.
 
         The recovery paths — the self-healing late commit (ADR 0029) and the grace backfill
         (ADR 0030) — record spend with no held estimate: committed takes what fits in

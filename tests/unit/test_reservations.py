@@ -20,7 +20,7 @@ def test_committed_and_released_are_terminal(status: ReservationStatus) -> None:
 
 
 def test_reaped_is_not_terminal_a_late_commit_may_follow() -> None:
-    # §5.4: a commit for a reaped reservation self-heals into committed (ADR 0029).
+    # A commit for a reaped reservation self-heals into committed (ADR 0029).
     assert not is_terminal(ReservationStatus.REAPED)
 
 

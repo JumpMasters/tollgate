@@ -1,4 +1,4 @@
-"""The comparative load harness (§7): strategy semantics, the bug→fix→proof shootout, and the
+"""The comparative load harness: strategy semantics, the bug→fix→proof shootout, and the
 product-path proof under real concurrency."""
 
 from __future__ import annotations

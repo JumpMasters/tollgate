@@ -1,15 +1,15 @@
-"""The reserve command handler and its transaction envelope (§4, §5).
+"""The reserve command handler and its transaction envelope.
 
 ``ReserveHandler.reserve`` is the keystone command. Authentication is the caller's precondition —
-the handler receives an already-verified :class:`AuthContext` (plan 11's bearer dependency) — and
-then runs the §5 envelope in one transaction via the :class:`UnitOfWork` port: claim the
+the handler receives an already-verified :class:`AuthContext` (bearer dependency) — and
+then runs the command envelope in one transaction via the :class:`UnitOfWork` port: claim the
 idempotency key, resolve the current price and the applicable budget set, guarded-reserve the
 worst-case estimate on every node all-or-nothing, persist the held reservation, its lines and the
 reserve ledger rows, and cache the response. A denial (unknown model, unauthorized/unknown project,
 empty applicable set, insufficient budget) raises a typed error, which leaves the ``UnitOfWork`` via
 an exception and rolls the whole transaction back — so a budget denial never persists its
-idempotency key and a later retry can still succeed (§5.1). Resolution and the project authorization
-re-check happen inside the transaction (§5.0 re-checks authorization inside resolution).
+idempotency key and a later retry can still succeed. Resolution and the project authorization
+re-check happen inside the transaction (re-checks authorization inside resolution).
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ from tollgate.domain.scopes import BudgetNode
 
 
 def reserve_fingerprint(principal: Principal, command: ReserveCommand) -> str:
-    """Return a stable fingerprint of a reserve command for idempotency-key reuse detection (§5.1).
+    """Return a stable fingerprint of a reserve command for idempotency-key reuse detection.
 
     Two reserves under the same idempotency key but different salient fields are key reuse and
     are rejected; the fingerprint folds the derived principal and every cost-determining field
@@ -71,8 +71,8 @@ def reserve_fingerprint(principal: Principal, command: ReserveCommand) -> str:
 
 
 def _binding_label(node: BudgetNode | None) -> str:
-    """Human-readable name of the node that denied a reserve (most-restrictive resolution, §5.3)."""
-    if node is None:  # pragma: no cover - a denied reserve always names its binding node (plan 07)
+    """Human-readable name of the node that denied a reserve (most-restrictive resolution)."""
+    if node is None:  # pragma: no cover - a denied reserve always names its binding node
         return "unknown"
     return f"{node.scope_kind}:{node.scope_id}"
 
@@ -88,7 +88,7 @@ def _result_to_response(result: ReserveResult) -> dict[str, Any]:
 
 
 def _result_from_response(data: Mapping[str, Any]) -> ReserveResult:
-    """Reconstruct a reserve result from a cached idempotency response (the replay path, §5.1)."""
+    """Reconstruct a reserve result from a cached idempotency response (the replay path)."""
     return ReserveResult(
         reservation_id=ReservationId(str(data["reservation_id"])),
         estimated_micro=int(data["estimated_micro"]),
@@ -98,7 +98,7 @@ def _result_from_response(data: Mapping[str, Any]) -> ReserveResult:
 
 
 class ReserveHandler:
-    """Runs the reserve command end-to-end inside one transaction (§4, §5)."""
+    """Runs the reserve command end-to-end inside one transaction."""
 
     def __init__(
         self,
@@ -114,7 +114,7 @@ class ReserveHandler:
         self._ttl_seconds = reservation_ttl_seconds
 
     async def reserve(self, auth: AuthContext, command: ReserveCommand) -> ReserveResult:
-        """Reserve the worst-case estimate against every applicable budget, all-or-nothing (§4, §5).
+        """Reserve the worst-case estimate against every applicable budget, all-or-nothing.
 
         ``auth`` is the already-verified principal (authentication is the caller's precondition).
         Raises a typed denial — :class:`UnknownModel`, :class:`ScopeNotAuthorized`,

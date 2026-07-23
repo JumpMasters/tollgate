@@ -1,20 +1,20 @@
-"""PostgresReserveTransaction: the multi-budget, all-or-nothing guarded reserve (§5.2/§5.3).
+"""PostgresReserveTransaction: the multi-budget, all-or-nothing guarded reserve.
 
 A reserve gates against several budget nodes at once — the principal's ancestry path plus an
 optional project budget. This walks that already-resolved applicable set in the deterministic
 lock order (org < team < user < project, then scope_id), so overlapping reserves by sibling
 users — which share their parent rows — acquire the shared rows in one canonical sequence and
-cannot form a lock cycle (§5.3). It reuses PostgresCounterStore's single-node primitives (plan
-05) and adds no SQL of its own: for each node it lazily rolls the period then issues the guarded
-reserve; the first node without headroom stops the walk and is named as the binding node
+cannot form a lock cycle. It reuses PostgresCounterStore's single-node primitives and adds no
+SQL of its own: for each node it lazily rolls the period then issues the guarded reserve; the
+first node without headroom stops the walk and is named as the binding node
 (most-restrictive resolution).
 
 The walk does not open, commit, or roll back the transaction — it reports the outcome, and the
-command envelope (plans 09-10) commits on success or rolls back the partial reserves on denial.
-That rollback is what makes the reserve all-or-nothing; an insufficient-budget denial rolls the
-whole transaction back, so the idempotency key is not persisted and a later retry can succeed
-(§5.1). The applicable set is resolved and proven non-empty upstream (resolve_applicable_set,
-ADR 0020); this walk is never called with zero nodes.
+command envelope commits on success or rolls back the partial reserves on denial. That rollback
+is what makes the reserve all-or-nothing; an insufficient-budget denial rolls the whole
+transaction back, so the idempotency key is not persisted and a later retry can succeed. The
+applicable set is resolved and proven non-empty upstream (resolve_applicable_set, ADR 0020);
+this walk is never called with zero nodes.
 """
 
 from __future__ import annotations

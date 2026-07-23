@@ -1,4 +1,4 @@
-"""Comparative load harness (§7): a concurrent reserve workload on a hot shared parent budget,
+"""Comparative load harness: a concurrent reserve workload on a hot shared parent budget,
 run against three admission-control strategies and audited by the offline oracle.
 
 Part A — the shootout — runs three reserve strategies (naive read-then-reserve, value-CAS
@@ -683,7 +683,7 @@ async def run_product_workload(
     commits replay under the same idempotency key (must dedup). After the run the clock advances
     past the TTL and the reaper reclaims the abandoned holds; the oracle then reconstructs the
     balances from the ledger and checks conservation + exactly-once (``TREE_ROLLUP`` excluded: the
-    self-healing late commit legitimately diverges parent/child committed, §5.4/ADR 0029).
+    self-healing late commit legitimately diverges parent/child committed, ADR 0029).
     """
     users = concurrency
     # team headroom well below total demand so the guard denies under contention (correctly)

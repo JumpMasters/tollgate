@@ -66,7 +66,7 @@ class Settings(BaseSettings):
     reaper_poll_interval_seconds: float = Field(
         default=30.0,
         gt=0,
-        description="Seconds the reservation reaper waits between ticks (§5.5).",
+        description="Seconds the reservation reaper waits between ticks.",
     )
     reaper_batch_size: int = Field(
         default=100,
@@ -85,12 +85,12 @@ class Settings(BaseSettings):
     idempotency_ttl_hours: int = Field(
         default=24,
         ge=1,
-        description="Age at which idempotency keys become reapable (§5.5).",
+        description="Age at which idempotency keys become reapable.",
     )
     idempotency_reaper_poll_interval_seconds: float = Field(
         default=3600.0,
         gt=0,
-        description="Seconds the idempotency reaper waits between ticks (§5.5).",
+        description="Seconds the idempotency reaper waits between ticks.",
     )
     worker_max_consecutive_failures: int = Field(
         default=10,

@@ -1,4 +1,4 @@
-"""The metering command handler: record already-incurred spend, never deny (section 6, ADR 0037).
+"""The metering command handler: record already-incurred spend, never deny (ADR 0037).
 
 Metering is post-charge chargeback: the call already happened, so there is no reservation and no
 admission gate. Like the grace backfill (ADR 0030) the handler resolves everything server-side —
@@ -7,7 +7,7 @@ version (ADR 0028), and the current UTC calendar-month period (ADR 0027) — the
 cost against each node's live remaining (committed up to remaining, excess as audited overage,
 ADR 0029's split) and appends one self-describing ``meter`` ledger row per node carrying the
 provider, model, and chargeback labels. An empty applicable set is rejected. One transaction;
-denials raise and roll back; only a success persists its receipt (section 5.1). Because a meter
+denials raise and roll back; only a success persists its receipt. Because a meter
 applies spend with no reservation to guard it, that dedup lives in the never-reaped
 ``metered_receipt`` table rather than the TTL'd ``idempotency_key``, so a retry stays exactly-once
 beyond any window instead of double-applying the spend once the key ages out (#92).
@@ -33,7 +33,7 @@ from tollgate.domain.records import ClaimOutcome, LedgerEntry, LedgerKind
 
 
 def meter_fingerprint(principal: Principal, command: MeterCommand) -> str:
-    """Fingerprint of a meter for idempotency-key reuse detection (section 5.1).
+    """Fingerprint of a meter for idempotency-key reuse detection.
 
     Folds the derived principal and every field that determines what the meter records, so a
     retry of the same completed call matches while a different call is key reuse. ``labels`` are
@@ -68,7 +68,7 @@ def _result_from_response(data: Mapping[str, Any]) -> MeterResult:
 
 
 class MeterHandler:
-    """Runs the metering command end-to-end inside one transaction (section 6)."""
+    """Runs the metering command end-to-end inside one transaction."""
 
     def __init__(self, *, uow: UnitOfWork, clock: Clock, ids: IdGenerator) -> None:
         self._uow = uow
@@ -76,7 +76,7 @@ class MeterHandler:
         self._ids = ids
 
     async def meter(self, auth: AuthContext, command: MeterCommand) -> MeterResult:
-        """Record metered spend against every applicable budget; never deny (section 6, ADR 0037).
+        """Record metered spend against every applicable budget; never deny (ADR 0037).
 
         Raises :class:`UnknownModel` when unpriced, :class:`ScopeNotAuthorized` for an
         unauthorized/unknown project (identically), ``BudgetNotFound`` when no budget governs the

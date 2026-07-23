@@ -1,4 +1,4 @@
-"""Single-connection behaviour of PostgresReserveTransaction (real Postgres, §5.2/§5.3).
+"""Single-connection behaviour of PostgresReserveTransaction (real Postgres).
 
 These pin the ordering, all-or-nothing reporting, denial-naming and lazy period roll on one
 connection (rolled back after each test). The emergent concurrency guarantees — exactly the

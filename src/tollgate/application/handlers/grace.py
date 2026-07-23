@@ -1,4 +1,4 @@
-"""The grace backfill handler: reconcile spend from an enforcement outage (§5.6, ADR 0030).
+"""The grace backfill handler: reconcile spend from an enforcement outage (ADR 0030).
 
 Under opt-in grace the SDK dispatched calls while the datastore was unreachable, tracking the
 provider-reported usage locally; once connectivity returns it backfills that spend so it is
@@ -8,8 +8,8 @@ and re-check as reserve), the current price-book version (ADR 0028), and the cur
 calendar-month period (ADR 0027) — then applies the actual cost against each node's live
 remaining (committed up to the remaining, excess as audited overage, ADR 0029's split) and
 appends one ``grace_backfill`` ledger row per node carrying both deltas. An empty applicable
-set is rejected: with no governing budget there is no balance to reconcile against. One §5
-transaction; denials raise and roll back; only a success persists its receipt (§5.1). Like the
+set is rejected: with no governing budget there is no balance to reconcile against. One command
+transaction; denials raise and roll back; only a success persists its receipt. Like the
 meter, the backfill applies spend with no reservation, so its dedup lives in the never-reaped
 ``metered_receipt`` table — the "backfills exactly once" guarantee holds beyond the
 idempotency-key TTL rather than only within it (#92).
@@ -35,7 +35,7 @@ from tollgate.domain.records import ClaimOutcome, LedgerEntry, LedgerKind
 
 
 def grace_backfill_fingerprint(principal: Principal, command: GraceBackfillCommand) -> str:
-    """Fingerprint of a grace backfill for idempotency-key reuse detection (§5.1).
+    """Fingerprint of a grace backfill for idempotency-key reuse detection.
 
     Folds the derived principal and every field that determines what the backfill records, so
     the SDK's retry of the same window matches while a different window is key reuse — the
@@ -73,7 +73,7 @@ def _result_from_response(data: Mapping[str, Any]) -> GraceBackfillResult:
 
 
 class GraceBackfillHandler:
-    """Runs the grace backfill end-to-end inside one transaction (§5.6)."""
+    """Runs the grace backfill end-to-end inside one transaction."""
 
     def __init__(self, *, uow: UnitOfWork, clock: Clock, ids: IdGenerator) -> None:
         self._uow = uow
@@ -83,7 +83,7 @@ class GraceBackfillHandler:
     async def backfill(
         self, auth: AuthContext, command: GraceBackfillCommand
     ) -> GraceBackfillResult:
-        """Record grace-window spend against every applicable budget (§5.6, ADR 0030).
+        """Record grace-window spend against every applicable budget (ADR 0030).
 
         Raises :class:`UnknownModel` when the pair is unpriced, :class:`ScopeNotAuthorized`
         for an unauthorized or unknown project (identically), ``BudgetNotFound`` when no

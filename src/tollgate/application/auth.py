@@ -1,4 +1,4 @@
-"""Credential authentication and scope authorization (§5.0).
+"""Credential authentication and scope authorization.
 
 Authentication is a precondition that runs **before** any command transaction: hash the
 presented bearer token, look the credential up through the :class:`CredentialRepository` port,
@@ -50,7 +50,7 @@ class AuthContext:
 
 
 class CredentialAuthenticator:
-    """Resolves a bearer token to an :class:`AuthContext`, or rejects it (§5.0).
+    """Resolves a bearer token to an :class:`AuthContext`, or rejects it.
 
     ``token_secret`` is the server pepper injected at the composition root (never imported from
     ``config`` — boundary). The authenticator runs entirely *before* the command transaction.
@@ -61,7 +61,7 @@ class CredentialAuthenticator:
         self._token_secret = token_secret
 
     async def authenticate(self, presented_token: str) -> AuthContext:
-        """Authenticate ``presented_token`` before any transaction opens (§5.0).
+        """Authenticate ``presented_token`` before any transaction opens.
 
         Raises :class:`AuthenticationFailed` if the token matches no credential, the matched
         credential is not ``active``, or its principal cannot be loaded — all rejected identically
@@ -83,7 +83,7 @@ def require_scope(
     *,
     target: str,
 ) -> None:
-    """Raise :class:`ScopeNotAuthorized` unless ``credential`` covers the target node (§5.0).
+    """Raise :class:`ScopeNotAuthorized` unless ``credential`` covers the target node.
 
     ``target_ancestry`` describes the node being accessed (see
     :func:`tollgate.domain.credentials.authorizes`); ``target`` is the human-readable scope used

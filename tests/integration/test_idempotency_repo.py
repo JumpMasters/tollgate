@@ -1,4 +1,4 @@
-"""Integration tests for PostgresIdempotencyRepository (real Postgres, §5.1)."""
+"""Integration tests for PostgresIdempotencyRepository (real Postgres)."""
 
 from __future__ import annotations
 
@@ -63,8 +63,8 @@ async def test_same_key_under_different_principals_do_not_collide(db_conn: Async
 async def test_duplicate_claim_before_response_replays_null(db_conn: AsyncConnection) -> None:
     # A duplicate that arrives after the key is claimed but before its response is stored
     # replays a NULL response. (Cross-transaction serialization — a real duplicate blocks on
-    # the unique index until the first commits — is exercised in plan 07; here both claims run
-    # on one connection.)
+    # the unique index until the first commits — is exercised in the concurrency integration
+    # tests; here both claims run on one connection.)
     repo = PostgresIdempotencyRepository(db_conn)
     await repo.claim("p1", "k1", "fp-1")
     claim = await repo.claim("p1", "k1", "fp-1")

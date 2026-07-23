@@ -6,9 +6,9 @@
 ## Context
 
 A reservation can be reaped while its call is in fact still alive — a stream slower
-than the TTL, a missed heartbeat — and §5.4 requires that a later `commit` for that
+than the TTL, a missed heartbeat — and the design requires that a later `commit` for that
 reservation records the real, already-incurred spend rather than silently no-oping.
-Three mechanics are left open by the spec:
+Three mechanics are left open by the design:
 
 1. **Exactly-once.** The `held → committed` identity guard cannot make a late commit
    exactly-once: the status is already `reaped`, so the guard matches zero rows for
@@ -23,7 +23,7 @@ Three mechanics are left open by the spec:
 
 ## Decision
 
-1. `reaped → committed` becomes a **legal transition** (the §4 lifecycle diagram
+1. `reaped → committed` becomes a **legal transition** (the lifecycle diagram
    already draws `reaped → late commit → committed`). The late commit claims it with
    a second guarded UPDATE — `claim_late_commit`: `... WHERE status = 'reaped'` —
    the same identity-guard mechanism as `held → terminal`, so exactly one late
@@ -55,5 +55,5 @@ Three mechanics are left open by the spec:
   not the reserve hot path.
 - A commit arriving after a late commit finds `status = 'committed'` and is rejected
   with `ReservationNotHeld` unless it replays its own idempotency key.
-- Grace backfill (§5.6, ADR 0030) reuses `apply_spend` for the identical
+- Grace backfill (ADR 0030) reuses `apply_spend` for the identical
   no-reservation-headroom problem.

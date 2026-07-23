@@ -1,4 +1,4 @@
-"""Unit tests for the grace backfill handler (§5.6, ADR 0030)."""
+"""Unit tests for the grace backfill handler (ADR 0030)."""
 
 from __future__ import annotations
 
@@ -201,7 +201,7 @@ class _StubReservations:
     async def insert(
         self, reservation: ReservationRecord, lines: Sequence[ReservationLineRecord]
     ) -> None:
-        raise AssertionError("grace backfill creates no reservation (§5.6)")
+        raise AssertionError("grace backfill creates no reservation")
 
     async def claim_terminal(
         self, reservation_id: ReservationId, next_status: ReservationStatus
@@ -319,7 +319,7 @@ async def test_backfill_records_spend_on_every_applicable_node() -> None:
     result = await handler.backfill(_auth(), _command())
     assert result == GraceBackfillResult(actual_micro=_ACTUAL, price_book_version="2026-06-22")
     ctx = uow._ctx
-    # lazy period roll then live-remaining application, in canonical lock order (§5.3/§5.5)
+    # lazy period roll then live-remaining application, in canonical lock order
     assert ctx.counter_store.ensured == [
         (BudgetId("b-org"), _PERIOD),
         (BudgetId("b-user"), _PERIOD),

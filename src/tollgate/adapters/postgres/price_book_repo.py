@@ -1,4 +1,4 @@
-"""PostgresPriceBookRepository: resolve the current price for a (provider, model) (§3, ADR 0028).
+"""PostgresPriceBookRepository: resolve the current price for a (provider, model) (ADR 0028).
 
 The current price-book version is the one with the latest ``published_at`` (ADR 0028), with
 ``version`` as a deterministic tiebreak when several versions share a ``published_at`` (#98). A
@@ -64,7 +64,7 @@ class PostgresPriceBookRepository:
         )
 
     async def price_at(self, version: str, provider: str, model: str) -> ModelPrice | None:
-        """Return the price stamped at exactly ``version``, or ``None`` if absent (§4).
+        """Return the price stamped at exactly ``version``, or ``None`` if absent.
 
         A commit reconciles against the reservation's **stamped** version, never the latest;
         the price book is immutable (ADR 0010/0021), so the row either exists exactly as

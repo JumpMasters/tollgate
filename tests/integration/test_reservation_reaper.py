@@ -1,5 +1,5 @@
 """Reservation reaper end-to-end against real Postgres: release, heartbeat, SKIP LOCKED,
-self-heal exactly-once (§5.4, §5.5, §7.2)."""
+self-heal exactly-once."""
 
 from __future__ import annotations
 

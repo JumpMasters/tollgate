@@ -1,8 +1,9 @@
-"""Cross-transaction idempotency dedup under contention (real Postgres, §5.1).
+"""Cross-transaction idempotency dedup under contention (real Postgres).
 
-Plan 06 proved claim/replay on one connection; this proves the serialization the spec relies on:
-two concurrent duplicates race the unique PK, one claims it FRESH and the other blocks on the
-index until the first commits, then REPLAYS the stored response — one effect, never two.
+The single-connection tests proved claim/replay on one connection; this proves the
+serialization the design relies on: two concurrent duplicates race the unique PK, one claims it
+FRESH and the other blocks on the index until the first commits, then REPLAYS the stored
+response — one effect, never two.
 """
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-"""Unit tests for the chargeback route helpers and composition wiring (section 2, ADR 0032)."""
+"""Unit tests for the chargeback route helpers and composition wiring (ADR 0032)."""
 
 from __future__ import annotations
 

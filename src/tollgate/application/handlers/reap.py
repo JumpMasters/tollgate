@@ -1,8 +1,8 @@
-"""The reaper handlers: release abandoned reservations and delete aged idempotency keys (§5.4-5.5).
+"""The reaper handlers: release abandoned reservations and delete aged idempotency keys.
 
 Reaping is a system-driven cancel. ``ReservationReaperHandler.run_once`` polls
 ``claim_next_expired`` (a ``FOR UPDATE SKIP LOCKED`` claim-and-reap), and for each reaped
-reservation releases its held estimate on every line in the canonical §5.3 lock order and appends
+reservation releases its held estimate on every line in the canonical lock order and appends
 one ``reap`` ledger row per node — each in its own bounded transaction. The status flip is the
 exactly-once guard, so a mainline commit that raced the reap routes to the self-healing late
 commit (ADR 0029). ``IdempotencyReaperHandler.run_once`` batch-deletes keys past their TTL. The
@@ -32,7 +32,7 @@ class ReapReport:
 
 
 class ReservationReaperHandler:
-    """Releases held reservations past their TTL, one bounded transaction each (§5.4, §5.5)."""
+    """Releases held reservations past their TTL, one bounded transaction each."""
 
     def __init__(
         self,
@@ -137,7 +137,7 @@ class ReservationReaperHandler:
 
 
 class IdempotencyReaperHandler:
-    """Batch-deletes idempotency keys past their TTL, one bounded transaction each (§5.5)."""
+    """Batch-deletes idempotency keys past their TTL, one bounded transaction each."""
 
     def __init__(
         self,

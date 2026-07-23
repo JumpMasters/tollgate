@@ -1,12 +1,12 @@
-"""The cancel command handler: release a held reservation's full estimate (§4, §5).
+"""The cancel command handler: release a held reservation's full estimate.
 
 The call failed before incurring usage, so the whole worst-case hold goes back: claim the
 idempotency key, load and authorize the reservation, claim the identity guard
 (``held → released``), release every line in canonical lock order, append the ``release``
-ledger rows, cache the response — one §5 transaction. Cancel has **no** self-heal path: a
+ledger rows, cache the response — one transaction. Cancel has **no** self-heal path: a
 reaped reservation was already released by the reaper, so a cancel that lost the guard is
 rejected with :class:`ReservationNotHeld` (the release effect happened exactly once either
-way). Denials raise and roll back; only a success persists its key (§5.1).
+way). Denials raise and roll back; only a success persists its key.
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ from tollgate.domain.reservations import ReservationStatus
 
 
 def cancel_fingerprint(principal: Principal, command: CancelCommand) -> str:
-    """Fingerprint of a cancel for idempotency-key reuse detection (§5.1).
+    """Fingerprint of a cancel for idempotency-key reuse detection.
 
     The ``"command"`` discriminator keeps a cancel and a commit of the same reservation from
     ever colliding under one key.
@@ -53,7 +53,7 @@ def _result_to_response(result: CancelResult) -> dict[str, Any]:
 
 
 def _result_from_response(data: Mapping[str, Any]) -> CancelResult:
-    """Reconstruct a cancel result from a cached idempotency response (the replay path, §5.1)."""
+    """Reconstruct a cancel result from a cached idempotency response (the replay path)."""
     return CancelResult(
         reservation_id=ReservationId(str(data["reservation_id"])),
         released_micro=int(data["released_micro"]),
@@ -61,14 +61,14 @@ def _result_from_response(data: Mapping[str, Any]) -> CancelResult:
 
 
 class CancelHandler:
-    """Runs the cancel command end-to-end inside one transaction (§4, §5)."""
+    """Runs the cancel command end-to-end inside one transaction."""
 
     def __init__(self, *, uow: UnitOfWork, ids: IdGenerator) -> None:
         self._uow = uow
         self._ids = ids
 
     async def cancel(self, auth: AuthContext, command: CancelCommand) -> CancelResult:
-        """Release the reservation's full estimate on every line, exactly once (§4, §5.2).
+        """Release the reservation's full estimate on every line, exactly once.
 
         Raises :class:`ScopeNotAuthorized` for an unknown or foreign reservation (identically —
         no existence leak), :class:`ReservationNotHeld` when the reservation already settled

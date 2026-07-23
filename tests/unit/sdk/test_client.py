@@ -149,7 +149,7 @@ async def test_cancel_sends_the_wire_shape_and_parses_the_result() -> None:
 
 async def test_extend_sends_no_idempotency_key() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
-        assert request.headers.get("Idempotency-Key") is None  # extend is monotonic (§4)
+        assert request.headers.get("Idempotency-Key") is None  # extend is monotonic
         return httpx.Response(
             200, json={"reservation_id": "res-1", "ttl_deadline": "2026-06-23T12:20:00+00:00"}
         )

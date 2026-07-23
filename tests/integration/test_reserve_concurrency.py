@@ -1,4 +1,4 @@
-"""Cross-transaction reserve races on real Postgres (§5.2/§5.3).
+"""Cross-transaction reserve races on real Postgres.
 
 These commit from several connections at once to prove what a single rolled-back connection
 cannot: under contention exactly the nodes' headroom-many reserves succeed (most-restrictive),
@@ -134,7 +134,7 @@ async def test_sibling_reserves_serialize_on_shared_parents_without_deadlock(
 async def test_concurrent_first_reservers_converge_on_one_period_balance_row(
     committing_engine: AsyncEngine,
 ) -> None:
-    """``ensure_period``'s ``ON CONFLICT DO NOTHING`` under a real cross-transaction race (§5.3).
+    """``ensure_period``'s ``ON CONFLICT DO NOTHING`` under a real cross-transaction race.
 
     Seed only the ``budget`` row for a fresh period -- no ``budget_balance`` row exists yet --
     then fire N concurrent reserves that all race to INSERT it. Exactly one balance row must

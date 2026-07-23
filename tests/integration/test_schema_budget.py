@@ -1,4 +1,4 @@
-"""Constraint tests for budget / budget_alert / budget_balance (the §3 storage invariant)."""
+"""Constraint tests for budget / budget_alert / budget_balance (the storage invariant)."""
 
 from __future__ import annotations
 
@@ -97,7 +97,7 @@ async def test_budget_balance_rejects_reserved_plus_committed_over_limit(
 
 async def test_budget_balance_allows_overage_beyond_limit(db_conn: AsyncConnection) -> None:
     # overage is OUTSIDE the reserved+committed<=limit CHECK (committed alone never
-    # exceeds limit), so a row with committed==limit and large overage is valid (§3).
+    # exceeds limit), so a row with committed==limit and large overage is valid.
     await _seed_budget(db_conn)
     await db_conn.execute(
         text(

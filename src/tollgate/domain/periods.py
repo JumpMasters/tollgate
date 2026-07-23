@@ -1,7 +1,7 @@
-"""Period-start derivation for the reserve path (§3, §5.5, ADR 0027).
+"""Period-start derivation for the reserve path (ADR 0027).
 
 A ``budget_balance`` is keyed by ``(budget_id, period_start)``, and the multi-budget reserve
-(plan 07) applies a single ``period_start`` to every applicable node. V1 enforces one
+applies a single ``period_start`` to every applicable node. V1 enforces one
 **calendar-month** period shared by all of them: the schema also defines ``rolling_days``, but
 that kind has no anchor column to derive a window start from, so selecting it on the reserve path
 is deferred (ADR 0027). This module is pure — no I/O, no internal imports beyond the standard

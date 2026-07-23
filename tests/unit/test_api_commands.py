@@ -1,4 +1,4 @@
-"""Tests for the command routes (sections 4-5, ADR 0031)."""
+"""Tests for the command routes (ADR 0031)."""
 
 from __future__ import annotations
 

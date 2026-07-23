@@ -1,7 +1,7 @@
-"""PostgresLedgerRepository: append-only writes to the ``ledger`` (§5.2).
+"""PostgresLedgerRepository: append-only writes to the ``ledger``.
 
 The ledger is the immutable audit trail; this repository only ever inserts and is never
-summed on the command path — the offline conservation oracle (plan 16, ADR 0011) is the sole
+summed on the command path — the offline conservation oracle (ADR 0011) is the sole
 reader that aggregates it. ``append`` writes one row per entry in a single executemany.
 """
 

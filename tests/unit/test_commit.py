@@ -1,4 +1,4 @@
-"""Unit tests for the commit handler: reconciliation and the self-healing late commit (§4, §5)."""
+"""Unit tests for the commit handler: reconciliation and the self-healing late commit."""
 
 from __future__ import annotations
 

@@ -38,7 +38,7 @@ def test_remaining_subtracts_every_aggregate() -> None:
 
 def test_remaining_is_negative_when_overage_exceeds_headroom() -> None:
     # A commit that overran its reservation can drive remaining below zero; this is
-    # the signal the node stops admitting reserves, not an invariant breach (§3).
+    # the signal the node stops admitting reserves, not an invariant breach.
     b = _balance(limit=100, reserved=0, committed=100, overage=50)
     assert remaining(b) == -50
 
@@ -85,7 +85,7 @@ def test_node_invariants_hold_for_a_healthy_balance() -> None:
 
 def test_node_invariants_hold_despite_overage_driven_negative_remaining() -> None:
     # committed <= limit and reserved + committed <= limit both hold; only remaining
-    # is negative (audited overage). The node invariants must still pass (§4).
+    # is negative (audited overage). The node invariants must still pass.
     b = _balance(limit=100, reserved=0, committed=100, overage=50)
     assert remaining(b) == -50
     assert node_invariants_hold(b)

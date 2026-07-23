@@ -1,4 +1,4 @@
-"""PostgresBudgetRepository: the budget nodes a reserve gates against (§4, §5.3).
+"""PostgresBudgetRepository: the budget nodes a reserve gates against.
 
 ``find_ancestry_budgets`` returns the budgets that exist on the principal's org / team / user nodes
 (a single ``(scope_kind, scope_id) IN (...)`` lookup — ancestry scopes without a budget are simply
@@ -28,7 +28,7 @@ class PostgresBudgetRepository:
         self._conn = conn
 
     async def find_ancestry_budgets(self, principal: Principal) -> Sequence[BudgetNode]:
-        """Return the budgets on the principal's ``org`` / ``team`` / ``user`` nodes (§5.3)."""
+        """Return the budgets on the principal's ``org`` / ``team`` / ``user`` nodes."""
         wanted = [
             (ScopeKind.ORG.value, principal.org_id),
             (ScopeKind.TEAM.value, principal.team_id),
@@ -47,7 +47,7 @@ class PostgresBudgetRepository:
         ]
 
     async def find_project(self, project_id: ProjectId) -> ResolvedProject | None:
-        """Resolve a named project to its org and optional budget node, or ``None`` (§5.0)."""
+        """Resolve a named project to its org and optional budget node, or ``None``."""
         row = (
             await self._conn.execute(
                 select(project.c.org_id, budget.c.budget_id)

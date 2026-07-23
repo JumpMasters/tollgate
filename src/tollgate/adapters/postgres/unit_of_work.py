@@ -1,4 +1,4 @@
-"""PostgresUnitOfWork: the §5 command transaction envelope as a port (plan 09).
+"""PostgresUnitOfWork: the command transaction envelope as a port.
 
 ``begin()`` opens one ``engine.begin()`` transaction and yields a command context whose
 repositories all bind that connection, so a command's resolution reads and guarded writes commit —
@@ -48,6 +48,6 @@ class PostgresUnitOfWork:
 
     @asynccontextmanager
     async def begin(self) -> AsyncIterator[_PostgresCommandContext]:
-        """Open one transaction; commit on clean exit, roll back on exception (§5)."""
+        """Open one transaction; commit on clean exit, roll back on exception."""
         async with self._engine.begin() as conn:
             yield _PostgresCommandContext(conn)

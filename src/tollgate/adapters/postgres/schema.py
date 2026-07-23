@@ -1,4 +1,4 @@
-"""SQLAlchemy Core schema: the budget ledger of record (spec §3).
+"""SQLAlchemy Core schema: the budget ledger of record.
 
 This module is the single source of truth for the relational schema. ``env.py`` points
 Alembic's ``target_metadata`` here so ``--autogenerate`` diffs new migrations against it;

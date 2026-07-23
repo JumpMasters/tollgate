@@ -1,4 +1,4 @@
-"""Unit tests for the shared command-handler helpers (§5.0, §5.1, §5.3)."""
+"""Unit tests for the shared command-handler helpers."""
 
 from __future__ import annotations
 
@@ -112,7 +112,7 @@ async def test_unknown_and_foreign_reservations_are_rejected_identically() -> No
         await load_owned_reservation(_Reservations(None), _auth(), ReservationId("res-1"))
     with pytest.raises(ScopeNotAuthorized) as foreign_exc:
         await load_owned_reservation(_Reservations(foreign), _auth(), ReservationId("res-1"))
-    # the same scope string either way -> no existence leak (§5.0)
+    # the same scope string either way -> no existence leak
     assert unknown_exc.value.scope == foreign_exc.value.scope == "reservation:res-1"
 
 

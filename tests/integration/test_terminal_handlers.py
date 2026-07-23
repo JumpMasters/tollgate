@@ -1,4 +1,4 @@
-"""End-to-end lifecycle against real Postgres: commit/cancel/extend, self-heal, grace (§4, §5)."""
+"""End-to-end lifecycle against real Postgres: commit/cancel/extend, self-heal, grace."""
 
 from __future__ import annotations
 
@@ -162,8 +162,9 @@ async def _balances(engine: AsyncEngine, budget_id: str) -> tuple[int, int, int]
 
 
 async def _emulate_reap(engine: AsyncEngine, reservation_id: str, estimate: int) -> None:
-    """Apply the reaper's effect directly (the worker itself is plan 13): settle the status
-    and release the held estimate on every balance."""
+    """Apply the reaper's effect directly (the worker itself is exercised end-to-end in
+    test_reservation_reaper.py): settle the status and release the held estimate on every
+    balance."""
     async with engine.begin() as conn:
         await conn.execute(
             text("UPDATE reservation SET status = 'reaped' WHERE reservation_id = :r"),

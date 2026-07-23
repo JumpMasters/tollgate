@@ -2,7 +2,7 @@
 
 A reservation is *held* when created. *Committed* and *released* are terminal; *reaped* (its
 TTL elapsed with no heartbeat) is settled but not dead: the one transition out of it is the
-§5.4 self-healing late commit — ``reaped → committed`` — which records real spend for a call
+self-healing late commit — ``reaped → committed`` — which records real spend for a call
 that was still alive when its reservation was reaped (ADR 0029). The transitions here are
 pure; persistence and the identity guards that make each transition exactly-once live in the
 adapters.
@@ -22,7 +22,7 @@ class ReservationStatus(StrEnum):
     REAPED = "reaped"
 
 
-#: The legal transitions: held settles any way; reaped admits only the late commit (§5.4).
+#: The legal transitions: held settles any way; reaped admits only the late commit.
 _ALLOWED: dict[ReservationStatus, frozenset[ReservationStatus]] = {
     ReservationStatus.HELD: frozenset(
         {

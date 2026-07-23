@@ -3,9 +3,8 @@
 The SDK is a decoupled client: it defines its own exception taxonomy rather than importing the
 server's domain errors, so a caller catches
 ``tollgate.adapters.integrations.sdk.EnforcementUnavailable`` without pulling in server internals.
-``EnforcementUnavailable`` is the fail-closed signal a caller keys degraded-mode behaviour on
-(section 5.6): it covers both a 503 from the control plane and any connectivity/timeout failure
-reaching it.
+``EnforcementUnavailable`` is the fail-closed signal a caller keys degraded-mode behaviour on: it
+covers both a 503 from the control plane and any connectivity/timeout failure reaching it.
 """
 
 from __future__ import annotations

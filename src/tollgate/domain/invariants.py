@@ -1,6 +1,6 @@
 """Pure spend-invariant predicates shared by the oracle and the stateful tests.
 
-Section 7 defines the invariants the system must uphold at *every* budget node:
+These are the invariants the system must uphold at *every* budget node:
 non-negativity, the no-breach guarantee (committed never exceeds limit), the storage
 guard (reserved + committed <= limit), conservation against the append-only ledger,
 and tree consistency across budgeted nodes. They are expressed here once, as pure
@@ -17,7 +17,7 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True, slots=True)
 class Balance:
-    """A budget node's balance for one period (§3): the four micro-USD aggregates.
+    """A budget node's balance for one period: the four micro-USD aggregates.
 
     ``remaining = limit - reserved - committed - overage``. Carries no identity --
     the oracle keys balances by ``(budget_id, period_start)`` externally.
@@ -30,10 +30,10 @@ class Balance:
 
 
 def remaining(balance: Balance) -> int:
-    """Spendable headroom: ``limit - reserved - committed - overage`` (§3).
+    """Spendable headroom: ``limit - reserved - committed - overage``.
 
     May be *negative* once audited overage has accrued -- overage counts against
-    remaining without ever forcing ``committed`` past ``limit`` (§3), which is the
+    remaining without ever forcing ``committed`` past ``limit``, which is the
     signal that an overspent node stops admitting new reserves.
     """
     return (
@@ -45,7 +45,7 @@ def remaining(balance: Balance) -> int:
 
 
 def can_reserve(balance: Balance, estimate_micro: int) -> bool:
-    """Whether ``estimate_micro`` fits the node's headroom -- the §5.2 reserve guard.
+    """Whether ``estimate_micro`` fits the node's headroom -- the reserve guard.
 
     Mirrors the conditional UPDATE's ``WHERE limit - reserved - committed - overage
     >= :est``. Requires a non-negative estimate.
@@ -54,7 +54,7 @@ def can_reserve(balance: Balance, estimate_micro: int) -> bool:
 
 
 def amounts_non_negative(balance: Balance) -> bool:
-    """Every aggregate is non-negative -- the ``budget_balance`` CHECKs (§3)."""
+    """Every aggregate is non-negative -- the ``budget_balance`` CHECKs."""
     return (
         balance.limit_micro >= 0
         and balance.reserved_micro >= 0
@@ -64,22 +64,22 @@ def amounts_non_negative(balance: Balance) -> bool:
 
 
 def committed_within_limit(balance: Balance) -> bool:
-    """No breach: ``committed`` never exceeds ``limit`` -- the headline guarantee (§4)."""
+    """No breach: ``committed`` never exceeds ``limit`` -- the headline guarantee."""
     return balance.committed_micro <= balance.limit_micro
 
 
 def reservation_within_limit(balance: Balance) -> bool:
-    """Storage-tier guard: ``reserved + committed <= limit``, local to the row (§3, §5.2)."""
+    """Storage-tier guard: ``reserved + committed <= limit``, local to the row."""
     return balance.reserved_micro + balance.committed_micro <= balance.limit_micro
 
 
 def node_invariants_hold(balance: Balance) -> bool:
-    """The per-node spend invariants, conjoined -- asserted after every step (§7).
+    """The per-node spend invariants, conjoined -- asserted after every step.
 
     Non-negativity, no-breach (``committed <= limit``), and the storage guard
     (``reserved + committed <= limit``). It deliberately does *not* require
     ``remaining >= 0``: audited overage may drive ``remaining`` negative while every
-    guarantee above still holds (§4).
+    guarantee above still holds.
     """
     return (
         amounts_non_negative(balance)
@@ -90,10 +90,10 @@ def node_invariants_hold(balance: Balance) -> bool:
 
 @dataclass(frozen=True, slots=True)
 class LedgerDelta:
-    """One ledger row's signed effect on a balance (§3 sign convention).
+    """One ledger row's signed effect on a balance (sign convention).
 
     Carries only the three deltas; the full ledger row (kind, ids, timestamps, token
-    counts) is a persistence concern (plan 06). The oracle sums these per
+    counts) is a persistence concern. The oracle sums these per
     ``(budget, period)``.
     """
 
@@ -103,7 +103,7 @@ class LedgerDelta:
 
 
 def conserves(balance: Balance, deltas: Iterable[LedgerDelta]) -> bool:
-    """Conservation (§3, §7): summed ledger deltas reconstruct the live balance.
+    """Conservation: summed ledger deltas reconstruct the live balance.
 
     For one ``(budget, period)``: sum of delta_reserved == reserved, sum of
     delta_committed == committed, sum of delta_overage == overage. Catches the
@@ -125,7 +125,7 @@ def conserves(balance: Balance, deltas: Iterable[LedgerDelta]) -> bool:
 
 
 def committed_rolls_up(parent_committed_micro: int, child_committed_micro: Iterable[int]) -> bool:
-    """Tree consistency (§7): a budgeted parent's committed == sum of its children's.
+    """Tree consistency: a budgeted parent's committed == sum of its children's.
 
     Applied per parent over its budgeted children on the enforcement path. The
     orthogonal ``project`` axis is summed independently and is *not* part of this

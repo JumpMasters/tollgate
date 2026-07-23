@@ -1,4 +1,4 @@
-"""Integration tests for PostgresBudgetRepository (real Postgres, §4, §5.3)."""
+"""Integration tests for PostgresBudgetRepository (real Postgres)."""
 
 from __future__ import annotations
 

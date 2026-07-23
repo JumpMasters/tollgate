@@ -1,4 +1,4 @@
-"""Offline invariant + conservation oracle over a finished ledger (§7, ADR 0011).
+"""Offline invariant + conservation oracle over a finished ledger (ADR 0011).
 
 The command path never sums the ledger; this module audits a *finished* run. For every
 ``(budget, period)`` it reconstructs the balance from the append-only ledger and checks the
@@ -42,7 +42,7 @@ NodeKey = tuple[str, datetime]
 
 
 class Check(StrEnum):
-    """The offline checks the oracle can run; a run may select a subset (§7)."""
+    """The offline checks the oracle can run; a run may select a subset."""
 
     NON_NEGATIVE = "non_negative"
     NO_BREACH = "no_breach"
@@ -57,7 +57,7 @@ ALL_CHECKS: frozenset[Check] = frozenset(Check)
 
 @dataclass(frozen=True, slots=True)
 class LedgerRow:
-    """One append-only ledger row's signed effect on a ``(budget, period)`` (§3)."""
+    """One append-only ledger row's signed effect on a ``(budget, period)``."""
 
     budget_id: str
     period_start: datetime
@@ -69,7 +69,7 @@ class LedgerRow:
 
 @dataclass(frozen=True, slots=True)
 class ReservationRow:
-    """A reservation's terminal-state marker for the exactly-once audit (§5.2)."""
+    """A reservation's terminal-state marker for the exactly-once audit."""
 
     reservation_id: str
     status: str
@@ -77,7 +77,7 @@ class ReservationRow:
 
 @dataclass(frozen=True, slots=True)
 class TreeEdge:
-    """A budgeted parent → budgeted child edge on the enforcement path (§7 roll-up)."""
+    """A budgeted parent → budgeted child edge on the enforcement path (roll-up)."""
 
     parent_budget_id: str
     child_budget_id: str
@@ -122,7 +122,7 @@ def _per_node_deltas(rows: list[LedgerRow]) -> dict[NodeKey, list[LedgerDelta]]:
 
 
 def _exactly_once(rows: list[LedgerRow]) -> list[Violation]:
-    """One reserve effect and at most one hold-release effect per (reservation, budget) (§5.2).
+    """One reserve effect and at most one hold-release effect per (reservation, budget).
 
     Each reservation reserves a node once (one positive ``delta_reserved``) and releases that
     hold at most once (one negative ``delta_reserved`` — a commit-of-held, cancel, or reap). The
@@ -164,10 +164,10 @@ def _exactly_once(rows: list[LedgerRow]) -> list[Violation]:
 def _tree_rollup(
     balances: Mapping[NodeKey, Balance], tree_edges: list[TreeEdge]
 ) -> list[Violation]:
-    """A budgeted parent's committed equals the sum of its budgeted children's, per period (§7).
+    """A budgeted parent's committed equals the sum of its budgeted children's, per period.
 
     Holds on the normal enforcement path; the self-healing late commit against divergent per-node
-    remaining (§5.4, ADR 0029) is a documented exception, so callers auditing a run that mixed
+    remaining (ADR 0029) is a documented exception, so callers auditing a run that mixed
     self-heal omit this check.
     """
     committed: dict[str, dict[datetime, int]] = {}
@@ -203,7 +203,7 @@ def evaluate(
     tree_edges: Iterable[TreeEdge],
     checks: frozenset[Check] = ALL_CHECKS,
 ) -> OracleReport:
-    """Run the selected offline checks over a finished run's rows (§7, ADR 0011).
+    """Run the selected offline checks over a finished run's rows (ADR 0011).
 
     Pure: no I/O, no internal-package imports beyond the shared invariant predicates. Every
     argument is materialised once so a one-shot iterator is fine.
@@ -331,7 +331,7 @@ async def _load_tree_edges(conn: AsyncConnection) -> list[TreeEdge]:
 async def load_and_check(
     conn: AsyncConnection, *, checks: frozenset[Check] = ALL_CHECKS
 ) -> OracleReport:
-    """Load a finished run's rows from Postgres and run the selected checks (§7, ADR 0011)."""
+    """Load a finished run's rows from Postgres and run the selected checks (ADR 0011)."""
     return evaluate(
         balances=await load_balances(conn),
         ledger_rows=await _load_ledger(conn),

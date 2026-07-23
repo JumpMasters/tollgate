@@ -1,4 +1,4 @@
-"""The chargeback read routes: GET /v1/budgets and GET /v1/spend (section 2, 5.0, ADR 0032, 0033).
+"""The chargeback read routes: GET /v1/budgets and GET /v1/spend (ADR 0032, 0033).
 
 ``GET /v1/budgets`` authorizes to budgets at or below the bearer credential's scope; an optional
 ``?scope=<kind>:<id>`` re-roots the returned subtree at a named node, refused identically to an
@@ -115,7 +115,7 @@ async def budgets(
 ) -> BudgetStatesResponse:
     """Return budget state at or below the credential's scope.
 
-    Section 2; optional ``?scope=`` filter.
+    Optional ``?scope=`` filter.
     """
     handler: ChargebackHandler = request.app.state.chargeback_handler
     view: BudgetStatesView = await handler.budget_states(auth, scope=_parse_scope(scope))
@@ -143,7 +143,7 @@ async def spend(
     scope: str | None = None,
     period_start: datetime | None = None,
 ) -> SpendRollupResponse:
-    """Realized spend for a scope node, grouped by a dimension, for one period (section 2, 5.0)."""
+    """Realized spend for a scope node, grouped by a dimension, for one period."""
     parsed = _parse_group_by_query(group_by)
     handler: ChargebackHandler = request.app.state.chargeback_handler
     rollup = await handler.spend_rollup(

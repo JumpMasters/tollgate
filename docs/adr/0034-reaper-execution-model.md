@@ -30,7 +30,7 @@ boundary
   rather than a separate reaper transaction seam. The reservation reaper's claim-and-reap is a
   single `UPDATE reservation SET status='reaped' WHERE reservation_id = (SELECT ... WHERE
   status='held' AND ttl_deadline < now ORDER BY ttl_deadline FOR UPDATE SKIP LOCKED LIMIT 1)
-  RETURNING ...`, and it releases the reservation's lines in the canonical §5.3 lock order within
+  RETURNING ...`, and it releases the reservation's lines in the canonical lock order within
   that same transaction. The status flip (`held → reaped`) is the exactly-once guard, so a mainline
   commit that loses the race routes to the ADR 0029 self-heal; taking the reservation-row lock
   before the balance rows (in canonical order) means the reaper forms no lock cycle with

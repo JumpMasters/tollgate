@@ -1,4 +1,4 @@
-"""End-to-end reserve against real Postgres: the §5 envelope under real commits (§4, §5)."""
+"""End-to-end reserve against real Postgres: the transaction envelope under real commits."""
 
 from __future__ import annotations
 

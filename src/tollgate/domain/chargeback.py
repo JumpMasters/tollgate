@@ -1,10 +1,10 @@
-"""Read-side value types and pure alert/utilization logic for the chargeback API (section 2, 5.0).
+"""Read-side value types and pure alert/utilization logic for the chargeback API.
 
 A ``BudgetState`` is one budget node's balance for the current period plus its configured
 soft-alert thresholds; a chargeback read returns the set of states at or below a credential's
-scope (section 5.0). Utilization is reserved-inclusive -- ``(reserved + committed + overage) /
-limit`` -- so it matches the ``remaining`` headroom the reserve guard actually gates on (section
-3): an alert says how much room to reserve is gone, not merely how much has settled. Pure: no
+scope. Utilization is reserved-inclusive -- ``(reserved + committed + overage) /
+limit`` -- so it matches the ``remaining`` headroom the reserve guard actually gates on: an
+alert says how much room to reserve is gone, not merely how much has settled. Pure: no
 I/O, no application or adapter imports.
 """
 
@@ -21,7 +21,7 @@ from tollgate.domain.scopes import ScopeKind
 
 @dataclass(frozen=True, slots=True)
 class BudgetState:
-    """One budget node's current-period balance and its soft-alert thresholds (section 2, 3)."""
+    """One budget node's current-period balance and its soft-alert thresholds."""
 
     budget_id: BudgetId
     scope_kind: ScopeKind
@@ -32,35 +32,26 @@ class BudgetState:
 
 @dataclass(frozen=True, slots=True)
 class BudgetStatesView:
-    """The result of a chargeback read: the in-scope states, all for one ``period_start``.
-
-    Section 2.
-    """
+    """The result of a chargeback read: the in-scope states, all for one ``period_start``."""
 
     period_start: datetime
     states: tuple[BudgetState, ...]
 
 
 def remaining_micro(state: BudgetState) -> int:
-    """Spendable headroom ``limit - reserved - committed - overage``; may be negative.
-
-    Section 3.
-    """
+    """Spendable headroom ``limit - reserved - committed - overage``; may be negative."""
     return remaining(state.balance)
 
 
 def spent_micro(state: BudgetState) -> int:
-    """Reserved-inclusive consumption ``reserved + committed + overage`` -- the alert basis.
-
-    Section 3.
-    """
+    """Reserved-inclusive consumption ``reserved + committed + overage`` -- the alert basis."""
     return state.balance.limit_micro - remaining(state.balance)
 
 
 def utilization_pct(state: BudgetState) -> int:
     """Reserved-inclusive utilization as a floored whole percent; 0 when the limit is non-positive.
 
-    May exceed 100 once audited overage drives spend past the limit (section 3), reported faithfully
+    May exceed 100 once audited overage drives spend past the limit, reported faithfully
     rather than clamped.
     """
     limit = state.balance.limit_micro
@@ -70,7 +61,7 @@ def utilization_pct(state: BudgetState) -> int:
 
 
 def crossed_thresholds(state: BudgetState) -> tuple[int, ...]:
-    """The configured thresholds the node has reached, ascending (section 3; never blocks).
+    """The configured thresholds the node has reached, ascending (never blocks).
 
     A threshold ``t`` is crossed iff ``spent / limit >= t / 100``, tested as ``spent * 100 >= t *
     limit`` to stay in exact integers. A non-positive limit crosses nothing.
@@ -83,7 +74,7 @@ def crossed_thresholds(state: BudgetState) -> tuple[int, ...]:
 
 
 class GroupByKind(StrEnum):
-    """The dimension a spend rollup groups by (section 2)."""
+    """The dimension a spend rollup groups by."""
 
     PROVIDER = "provider"
     MODEL = "model"
@@ -92,7 +83,7 @@ class GroupByKind(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class GroupBy:
-    """A parsed group-by dimension: ``provider``, ``model``, or a ``label:<key>`` (section 2)."""
+    """A parsed group-by dimension: ``provider``, ``model``, or a ``label:<key>``."""
 
     kind: GroupByKind
     label_key: str | None = None
@@ -115,7 +106,7 @@ def parse_group_by(raw: str) -> GroupBy | None:
 
 @dataclass(frozen=True, slots=True)
 class SpendGroup:
-    """One group of a spend rollup: the group's value and its realized micro-USD spend (section 2).
+    """One group of a spend rollup: the group's value and its realized micro-USD spend.
 
     ``group`` is ``None`` for spend that cannot be attributed on the requested dimension -- a
     grace-backfill row (no reservation) or a reservation missing the requested label key.
@@ -127,7 +118,7 @@ class SpendGroup:
 
 @dataclass(frozen=True, slots=True)
 class SpendRollup:
-    """A scope node's realized spend for one period, grouped by a dimension (section 2)."""
+    """A scope node's realized spend for one period, grouped by a dimension."""
 
     period_start: datetime
     groups: tuple[SpendGroup, ...]

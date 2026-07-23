@@ -118,7 +118,7 @@ _DATA_TABLES = (
 
 
 class _MutableClock:
-    """A clock the machine advances to drive TTL/extend/reap deterministically (§5.4)."""
+    """A clock the machine advances to drive TTL/extend/reap deterministically."""
 
     def __init__(self, start: datetime) -> None:
         self._t = start
@@ -183,7 +183,7 @@ class _ReferenceModel:
                 node.reserved -= state.estimate
                 node.committed += committed
                 node.overage += overage
-        else:  # reaped -> self-healing late commit against each node's live remaining (§5.4)
+        else:  # reaped -> self-healing late commit against each node's live remaining
             for budget_id in state.nodes:
                 node = self.nodes[budget_id]
                 remaining = max(node.limit - node.reserved - node.committed - node.overage, 0)

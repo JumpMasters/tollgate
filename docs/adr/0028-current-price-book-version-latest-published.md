@@ -5,11 +5,11 @@
 
 ## Context
 
-Prices live in a versioned, immutable price book (§3, ADR 0010, ADR 0021): a
+Prices live in a versioned, immutable price book (ADR 0010, ADR 0021): a
 `price_book` version is append-only and a price correction ships as a **new**
 version, never an edit. A reserve must resolve the price for a `(provider, model)`
 and **stamp the version** on the reservation so the matching commit reconciles
-against the same basis (§4, §8). The schema has no explicit "active version"
+against the same basis. The schema has no explicit "active version"
 pointer, so "which version is current" needs a rule.
 
 ## Decision

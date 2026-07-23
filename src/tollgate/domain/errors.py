@@ -87,12 +87,12 @@ class ReservationNotHeld(TollgateError):
 
     Raised by commit/cancel when the terminal effect already happened (under a different
     idempotency key), and by extend when there is nothing left to keep alive. A commit that
-    finds the reservation *reaped* does not raise this — it self-heals (§5.4).
+    finds the reservation *reaped* does not raise this — it self-heals.
     """
 
 
 class AuthenticationFailed(TollgateError):
-    """A presented bearer token matched no active credential (§5.0).
+    """A presented bearer token matched no active credential.
 
     A missing, revoked, or otherwise unusable token is rejected identically, so the result never
     reveals which credentials exist.
@@ -100,7 +100,7 @@ class AuthenticationFailed(TollgateError):
 
 
 class ScopeNotAuthorized(TollgateError):
-    """A credential tried to act on or read a node outside its scope (§5.0)."""
+    """A credential tried to act on or read a node outside its scope."""
 
     def __init__(self, scope: str) -> None:
         super().__init__(f"credential not authorized for {scope}")

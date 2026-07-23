@@ -1,4 +1,4 @@
-"""Integration tests for PostgresCredentialRepository (real Postgres, §5.0)."""
+"""Integration tests for PostgresCredentialRepository (real Postgres)."""
 
 from __future__ import annotations
 
