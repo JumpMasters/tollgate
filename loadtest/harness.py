@@ -31,7 +31,7 @@ from typing import Protocol
 from sqlalchemy import pool, text
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
-from loadtest.oracle import ALL_CHECKS, Check, evaluate, load_and_check
+from loadtest.oracle import ALL_CHECKS, Check, evaluate, load_and_check, load_balances
 from tollgate.adapters.postgres.identifiers import Uuid7IdGenerator
 from tollgate.adapters.postgres.schema import (
     budget,
@@ -259,21 +259,26 @@ async def run_strategy(
         for _ in range(concurrency):
             conns.append(await engine.connect())
         started = time.perf_counter()
-        results = await asyncio.gather(
-            *(
-                _worker(
-                    conns[i],
-                    strategy,
-                    tree,
-                    worker_id=i,
-                    ops_per_worker=ops_per_worker,
-                    seed=seed,
-                    barrier=barrier,
+        # A TaskGroup (not bare gather) so that if one worker raises after the barrier, its
+        # siblings are cancelled and awaited before the finally closes their connections —
+        # no use-after-close on a connection another task is still holding.
+        async with asyncio.TaskGroup() as tg:
+            tasks = [
+                tg.create_task(
+                    _worker(
+                        conns[i],
+                        strategy,
+                        tree,
+                        worker_id=i,
+                        ops_per_worker=ops_per_worker,
+                        seed=seed,
+                        barrier=barrier,
+                    )
                 )
                 for i in range(concurrency)
-            )
-        )
+            ]
         elapsed = time.perf_counter() - started
+        results = [task.result() for task in tasks]
     finally:
         for conn in conns:
             await conn.close()
@@ -726,7 +731,9 @@ async def run_product_workload(
                     pass
         return admitted, committed, abandoned, duplicates
 
-    results = await asyncio.gather(*(_worker(i) for i in range(concurrency)))
+    async with asyncio.TaskGroup() as tg:
+        tasks = [tg.create_task(_worker(i)) for i in range(concurrency)]
+    results = [task.result() for task in tasks]
     admitted = sum(r[0] for r in results)
     committed = sum(r[1] for r in results)
     abandoned = sum(r[2] for r in results)
@@ -744,7 +751,7 @@ async def run_product_workload(
 
     async with engine.connect() as conn:
         oracle = await load_and_check(conn, checks=ALL_CHECKS - {Check.TREE_ROLLUP})
-        balances = await _read_product_balances(conn)
+        balances = await load_balances(conn)
     return ProductMetrics(
         admitted=admitted,
         committed=committed,
@@ -754,23 +761,3 @@ async def run_product_workload(
         overspend_micro=_overspend_micro(balances),
         violations=tuple(sorted({v.check.value for v in oracle.violations})),
     )
-
-
-async def _read_product_balances(conn: AsyncConnection) -> dict[NodeKey, Balance]:
-    """Load the real ``budget_balance`` rows as oracle ``Balance`` values (for the overspend
-    sum)."""
-    result = await conn.execute(
-        text(
-            "SELECT budget_id, period_start, limit_micro, reserved_micro, committed_micro, "
-            "overage_micro FROM budget_balance"
-        )
-    )
-    balances: dict[NodeKey, Balance] = {}
-    for row in result:
-        balances[(str(row.budget_id), row.period_start)] = Balance(
-            limit_micro=int(row.limit_micro),
-            reserved_micro=int(row.reserved_micro),
-            committed_micro=int(row.committed_micro),
-            overage_micro=int(row.overage_micro),
-        )
-    return balances

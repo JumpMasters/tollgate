@@ -1,8 +1,9 @@
-"""Unit tests for the harness's pure numbers-table formatter."""
+"""Unit tests for the harness's pure numbers-table formatter and the CLI argument guard."""
 
 from __future__ import annotations
 
-from loadtest.harness import RunMetrics, format_table
+import pytest
+from loadtest.harness import RunMetrics, format_table, main
 
 
 def _row(strategy: str, overspend: int, retries: int) -> RunMetrics:
@@ -36,3 +37,12 @@ def test_table_renders_overspend_and_retries() -> None:
 
 def test_empty_rows_still_render_a_header() -> None:
     assert "strategy" in format_table([])
+
+
+def test_main_exits_cleanly_without_a_database_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    # With no --database-url and no TOLLGATE_DATABASE_URL, the CLI must fail via argparse (exit 2)
+    # rather than crashing with a traceback later when it tries to open a connection.
+    monkeypatch.delenv("TOLLGATE_DATABASE_URL", raising=False)
+    with pytest.raises(SystemExit) as exc_info:
+        main([])
+    assert exc_info.value.code == 2
