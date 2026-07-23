@@ -3,8 +3,7 @@
 # `make verify` mirrors the checks that gate every pull request in CI. The
 # coverage step runs the integration tests against a real Postgres via
 # testcontainers, so `make verify` (and `make cover`/`make test-integration`)
-# require Docker once integration tests exist. `make test` stays unit-only and
-# needs no Docker.
+# require Docker. `make test` stays unit-only and needs no Docker.
 
 .PHONY: all verify sync locked fmt lint typecheck imports test test-integration cover audit clean
 
