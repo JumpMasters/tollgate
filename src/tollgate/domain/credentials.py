@@ -1,10 +1,10 @@
-"""Credential authority and the derived principal — the authN/authz value types (§5.0).
+"""Credential authority and the derived principal — the authN/authz value types.
 
 Authentication resolves a presented bearer token to a :class:`Credential` (its authority: the
 principal it speaks for and the scope node that bounds it) and a :class:`Principal` (the acting
 ``user -> team -> org`` identity the credential *derives* — a caller can never assert it).
 Authorization is the pure predicate :func:`authorizes`: a credential may act on or reveal a
-budget node iff that node is at or below the credential's own scope (§5.0). This module is pure
+budget node iff that node is at or below the credential's own scope. This module is pure
 policy over already-loaded rows — the lookups are I/O the application performs through a port —
 and imports only sibling ``domain`` modules.
 """
@@ -28,13 +28,13 @@ class CredentialStatus(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class Credential:
-    """An authenticated credential's authority (§5.0).
+    """An authenticated credential's authority.
 
     ``principal_id`` is the ``user_principal`` the credential speaks for; the reserve derives the
     acting identity from it. ``scope_kind``/``scope_id`` bound the credential's authority — the
     node at or below which it may name a ``project`` on reserve and read budgets. ``status`` is
     carried so the *authenticator*, not the store, decides that a non-active credential fails
-    authentication (a revoked token and an unknown token are rejected identically, §5.0).
+    authentication (a revoked token and an unknown token are rejected identically).
     """
 
     credential_id: CredentialId
@@ -46,7 +46,7 @@ class Credential:
 
 @dataclass(frozen=True, slots=True)
 class Principal:
-    """The acting identity derived from a credential: a user with its team and org (§5.0).
+    """The acting identity derived from a credential: a user with its team and org.
 
     A principal *is* a ``user_principal`` in V1 — the only principal kind — so ``user_id`` names
     the same node as the credential's ``principal_id`` (the ``api_credential.principal_id`` FK
@@ -73,7 +73,7 @@ def authorizes(credential: Credential, target_ancestry: Mapping[ScopeKind, str])
     So an org-scoped credential covers every team, user, and project under its org; a team-scoped
     one covers its team and that team's users but no project (a project has no team ancestor); a
     user- or project-scoped credential covers only its own node. This is the "at or below the
-    credential's scope" rule of §5.0, expressed without walking the tree.
+    credential's scope" rule, expressed without walking the tree.
 
     The caller must build ``target_ancestry`` from trusted, server-derived ancestry
     (the principal's resolved tree and the looked-up project's org), never from

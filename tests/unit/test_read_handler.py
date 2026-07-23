@@ -1,4 +1,4 @@
-"""Unit tests for ChargebackHandler: the at-or-below-scope authorization filter (section 5.0)."""
+"""Unit tests for ChargebackHandler: the at-or-below-scope authorization filter."""
 
 from __future__ import annotations
 

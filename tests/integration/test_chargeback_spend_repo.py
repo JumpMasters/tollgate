@@ -1,4 +1,4 @@
-"""Integration tests for PostgresChargebackRepository.spend_rollup (real Postgres, section 2)."""
+"""Integration tests for PostgresChargebackRepository.spend_rollup (real Postgres)."""
 
 from __future__ import annotations
 

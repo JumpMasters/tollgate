@@ -5,7 +5,7 @@
 
 ## Context
 
-The relational schema (§3, fourteen tables) is defined once as a SQLAlchemy Core
+The relational schema (fourteen tables) is defined once as a SQLAlchemy Core
 `MetaData` in `adapters/postgres/schema.py` — the single source of truth the
 application queries against. Alembic's first ("baseline") revision must create
 that schema. The conventional approach transcribes each table into the revision

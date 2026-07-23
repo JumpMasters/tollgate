@@ -1,4 +1,4 @@
-"""Unit tests for the shared worker polling loop (§5.5)."""
+"""Unit tests for the shared worker polling loop."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Integration tests for PostgresReservationRepository (real Postgres, §5.2)."""
+"""Integration tests for PostgresReservationRepository (real Postgres)."""
 
 from __future__ import annotations
 

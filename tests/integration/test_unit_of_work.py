@@ -1,4 +1,4 @@
-"""Integration tests for PostgresUnitOfWork: commit/rollback of the command envelope (§5)."""
+"""Integration tests for PostgresUnitOfWork: commit/rollback of the command envelope."""
 
 from __future__ import annotations
 

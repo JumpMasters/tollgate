@@ -1,14 +1,13 @@
-"""PostgresReservationRepository: reservation persistence + the identity guards (§5.2, §5.4).
+"""PostgresReservationRepository: reservation persistence + the identity guards.
 
 ``insert`` writes a held reservation and its per-node lines in the active command transaction.
 ``claim_terminal`` is the identity guard: an ``UPDATE … WHERE status = 'held'`` that moves the
 reservation to exactly one terminal state — the conditional ``WHERE`` is what makes a terminal
 effect exactly-once; ``claim_late_commit`` is the same mechanism for the one legal post-reap
-transition (``reaped → committed``, the §5.4 self-heal, ADR 0029). ``find`` / ``find_lines``
+transition (``reaped → committed``, the self-heal, ADR 0029). ``find`` / ``find_lines``
 read a reservation back for the terminal commands (the line view joins ``budget`` so callers
 can walk balances in the canonical lock order), and ``advance_ttl`` is the monotonic heartbeat.
-The multi-budget orchestration that decides *when* to call these lives a layer up (plans
-07/09-10).
+The multi-budget orchestration that decides *when* to call these lives a layer up.
 """
 
 from __future__ import annotations
@@ -108,7 +107,7 @@ class PostgresReservationRepository:
                 raise IdempotencyKeyReuse from exc
             raise
         # A reservation always has >=1 line (a request governed by no budget is
-        # denied, plan 07); the guard only skips an empty executemany.
+        # denied); the guard only skips an empty executemany.
         if lines:
             await self._conn.execute(
                 insert(reservation_line),
@@ -126,7 +125,7 @@ class PostgresReservationRepository:
     async def claim_terminal(
         self, reservation_id: ReservationId, next_status: ReservationStatus
     ) -> bool:
-        """Move a held reservation to ``next_status``; return whether this caller won (§5.2)."""
+        """Move a held reservation to ``next_status``; return whether this caller won."""
         stmt = (
             update(reservation_table)
             .where(
@@ -153,7 +152,7 @@ class PostgresReservationRepository:
         return StoredReservation(record=record, status=ReservationStatus(row.status))
 
     async def find_lines(self, reservation_id: ReservationId) -> Sequence[ReservationLineView]:
-        """Return the reservation's lines joined with their budget nodes (§5.3, §5.4).
+        """Return the reservation's lines joined with their budget nodes.
 
         The join to ``budget`` recovers each line's scope, so callers can walk the balances in
         the canonical lock order; the line's own ``period_start`` is carried because a late
@@ -192,7 +191,7 @@ class PostgresReservationRepository:
     async def claim_late_commit(self, reservation_id: ReservationId) -> bool:
         """Move a reaped reservation to committed; return whether this caller won (ADR 0029).
 
-        The §5.4 self-heal guard: the one legal post-reap transition, claimed by the same
+        The self-heal guard: the one legal post-reap transition, claimed by the same
         conditional-``WHERE`` mechanism as :meth:`claim_terminal`, so exactly one late commit
         records the spend.
         """
@@ -210,7 +209,7 @@ class PostgresReservationRepository:
     async def advance_ttl(
         self, reservation_id: ReservationId, ttl_deadline: datetime
     ) -> datetime | None:
-        """Monotonically advance a held reservation's TTL; return the resulting deadline (§5.4).
+        """Monotonically advance a held reservation's TTL; return the resulting deadline.
 
         ``GREATEST`` keeps the stored deadline from ever moving backward, so a stale heartbeat
         (an older replica's clock, a delayed retry) can never shorten a newer one — which is
@@ -232,7 +231,7 @@ class PostgresReservationRepository:
     async def claim_next_expired(
         self, now: datetime, exclude_ids: Sequence[ReservationId] = ()
     ) -> StoredReservation | None:
-        """Claim and reap the oldest expired held reservation, or ``None`` if none remain (§5.4).
+        """Claim and reap the oldest expired held reservation, or ``None`` if none remain.
 
         The canonical Postgres queue claim: a ``FOR UPDATE SKIP LOCKED`` sub-select picks one
         held reservation past its ``ttl_deadline`` (skipping rows another reaper or a racing
@@ -243,7 +242,7 @@ class PostgresReservationRepository:
         ``ttl_deadline`` monotonically, ``ttl_deadline < now`` already means "not heartbeated
         recently" — no separate heartbeat column is needed. The caller releases this reservation's
         held estimate on its lines in the same transaction, so the status flip and the balance
-        release commit atomically (exactly-once, §5.2).
+        release commit atomically (exactly-once).
         """
         conditions = [
             reservation_table.c.status == ReservationStatus.HELD,

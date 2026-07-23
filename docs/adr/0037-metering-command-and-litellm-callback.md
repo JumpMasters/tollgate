@@ -32,7 +32,7 @@ metered calls outside the ledger and chargeback entirely.
   it, not only the LiteLLM callback.
 - **Distinct `meter` ledger provenance.** Metered spend is appended as its own `LedgerKind.METER`
   rows, not folded into `grace_backfill` or `commit_adjust`. A ledger row's `kind` is what makes
-  the append-only ledger auditable by source (section 3): a reviewer can tell a normal
+  the append-only ledger auditable by source: a reviewer can tell a normal
   reserve-then-commit call apart from a self-healing late commit, a connectivity-outage grace
   backfill, and a metered call, without inferring it from absence of a reservation id alone.
 - **The ledger is self-describing: `model` and `labels` columns carry provenance on the row
@@ -45,8 +45,8 @@ metered calls outside the ledger and chargeback entirely.
   reservation join still wins); a grace backfill also sets no ledger `model`, so it keeps landing
   in the unattributed bucket exactly as before — only a `meter` row uses the ledger-side fallback.
 - **Idempotency via the provider's response id, backed by a durable receipt.** `/v1/meter` uses the
-  same `Idempotency-Key` + fingerprint-checked replay contract as every other command (ADR 0031,
-  section 5.1). The natural key for a metered call is the provider's own response id — stable across
+  same `Idempotency-Key` + fingerprint-checked replay contract as every other command (ADR 0031).
+  The natural key for a metered call is the provider's own response id — stable across
   a caller's retries of the *same* completed call, distinct across different calls — so the LiteLLM
   callback derives its idempotency key from the response id, falling back to litellm's per-call id
   and finally a random key only when neither is available. Unlike `reserve` (guarded forever by the

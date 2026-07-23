@@ -1,4 +1,4 @@
-"""Unit tests for the metering command handler (section 6, ADR 0037)."""
+"""Unit tests for the metering command handler (ADR 0037)."""
 
 from __future__ import annotations
 
@@ -201,7 +201,7 @@ class _StubReservations:
     async def insert(
         self, reservation: ReservationRecord, lines: Sequence[ReservationLineRecord]
     ) -> None:
-        raise AssertionError("metering creates no reservation (section 6)")
+        raise AssertionError("metering creates no reservation")
 
     async def claim_terminal(
         self, reservation_id: ReservationId, next_status: ReservationStatus

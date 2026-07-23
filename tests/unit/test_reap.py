@@ -1,4 +1,4 @@
-"""Unit tests for the reaper handlers: reap expired reservations, delete aged keys (§5.4, §5.5)."""
+"""Unit tests for the reaper handlers: reap expired reservations, delete aged keys."""
 
 from __future__ import annotations
 
@@ -482,7 +482,7 @@ class _StubCounterStoreUntouched:
 
 
 class _IdemCtx:
-    """A ``CommandContext`` stubbed everywhere except ``idempotency`` (§5.5)."""
+    """A ``CommandContext`` stubbed everywhere except ``idempotency``."""
 
     def __init__(self, idempotency: _FakeIdempotency) -> None:
         self.prices = _StubPrices()

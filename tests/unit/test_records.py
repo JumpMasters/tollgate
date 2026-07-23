@@ -1,4 +1,4 @@
-"""Tests for the persistence-port value types added for the terminal commands (plan 10)."""
+"""Tests for the persistence-port value types added for the terminal commands."""
 
 from __future__ import annotations
 

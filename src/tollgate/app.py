@@ -40,7 +40,7 @@ from tollgate.workers.runner import SupportsRunOnce, run_forever
 def _authenticator(
     engine: AsyncEngine, *, token_secret: str
 ) -> Callable[[str], Awaitable[AuthContext]]:
-    """Authenticate each bearer token on its own short-lived connection (section 5.0).
+    """Authenticate each bearer token on its own short-lived connection.
 
     Authentication is a precondition outside the command transaction, so it
     borrows a pooled connection just long enough for the credential lookup.

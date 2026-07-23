@@ -1,4 +1,4 @@
-"""PostgresCredentialRepository: the read-only lookups behind authentication (§5.0).
+"""PostgresCredentialRepository: the read-only lookups behind authentication.
 
 Two equality lookups on one bound connection: a credential by its deterministic ``token_hash``
 (ADR 0026), and a principal's ``user -> team -> org`` identity by joining ``user_principal`` to
@@ -25,7 +25,7 @@ class PostgresCredentialRepository:
         self._conn = conn
 
     async def find_by_token_hash(self, token_hash: str) -> Credential | None:
-        """Return the credential whose ``token_hash`` matches, or ``None`` (§5.0)."""
+        """Return the credential whose ``token_hash`` matches, or ``None``."""
         row = (
             await self._conn.execute(
                 select(
@@ -48,7 +48,7 @@ class PostgresCredentialRepository:
         )
 
     async def load_principal(self, principal_id: PrincipalId) -> Principal | None:
-        """Resolve a principal to its ``user -> team -> org`` identity, or ``None`` (§5.0)."""
+        """Resolve a principal to its ``user -> team -> org`` identity, or ``None``."""
         row = (
             await self._conn.execute(
                 select(

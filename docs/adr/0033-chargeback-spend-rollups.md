@@ -6,7 +6,7 @@
 ## Context
 
 ADR 0032 delivered per-budget state and the by-scope rollup for free from
-`budget_balance`. The remaining chargeback promise (section 2) is spend broken
+`budget_balance`. The remaining chargeback promise is spend broken
 down by tags — provider, model, and label keys like env / cost-center — which
 `budget_balance` cannot express, since it is not tagged. That breakdown lives
 only in the append-only `ledger`, joined to the reservation for the model and

@@ -1,7 +1,7 @@
 """Wire schemas for the command routes (ADR 0031).
 
 Request models mirror the domain command types field-for-field, minus the
-``Idempotency-Key`` (which travels as a header, section 5.1), and reject
+``Idempotency-Key`` (which travels as a header), and reject
 unknown fields so a client typo surfaces as a 422 instead of silently
 weakening enforcement. Response models mirror the domain result types;
 ``datetime`` fields serialize as ISO 8601.
@@ -41,7 +41,7 @@ class _RequestModel(BaseModel):
 
 
 class UsageBody(_RequestModel):
-    """Provider-reported token usage (section 4: never caller-asserted amounts)."""
+    """Provider-reported token usage (never caller-asserted amounts)."""
 
     input_tokens: int = Field(ge=0, le=MAX_TOKENS)
     output_tokens: int = Field(ge=0, le=MAX_TOKENS)
@@ -50,7 +50,7 @@ class UsageBody(_RequestModel):
 
     @model_validator(mode="after")
     def _cached_within_input(self) -> UsageBody:
-        """The cached subset can never exceed the input it is drawn from (section 4)."""
+        """The cached subset can never exceed the input it is drawn from."""
         if self.cached_input_tokens > self.input_tokens:
             raise ValueError("cached_input_tokens cannot exceed input_tokens")
         return self
@@ -152,14 +152,14 @@ class MeterResponse(BaseModel):
 
 
 class BudgetAlertState(BaseModel):
-    """One configured soft threshold and whether current utilization has reached it (section 3)."""
+    """One configured soft threshold and whether current utilization has reached it."""
 
     threshold_pct: int
     crossed: bool
 
 
 class BudgetStateResponse(BaseModel):
-    """One budget node's current-period state in a chargeback read (section 2)."""
+    """One budget node's current-period state in a chargeback read."""
 
     scope_kind: str
     scope_id: str
@@ -173,21 +173,21 @@ class BudgetStateResponse(BaseModel):
 
 
 class BudgetStatesResponse(BaseModel):
-    """Body of ``GET /v1/budgets``: the states at or below the credential's scope (section 2)."""
+    """Body of ``GET /v1/budgets``: the states at or below the credential's scope."""
 
     period_start: datetime
     budgets: list[BudgetStateResponse]
 
 
 class SpendGroupResponse(BaseModel):
-    """One group of a spend rollup (section 2); ``group`` is null for unattributed spend."""
+    """One group of a spend rollup; ``group`` is null for unattributed spend."""
 
     group: str | None
     spend_micro: int
 
 
 class SpendRollupResponse(BaseModel):
-    """Body of ``GET /v1/spend``: realized spend for a node, grouped by a dimension (section 2)."""
+    """Body of ``GET /v1/spend``: realized spend for a node, grouped by a dimension."""
 
     period_start: datetime
     group_by: str

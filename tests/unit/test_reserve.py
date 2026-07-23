@@ -1,4 +1,4 @@
-"""Unit tests for the reserve handler and its transaction envelope (§4, §5)."""
+"""Unit tests for the reserve handler and its transaction envelope."""
 
 from __future__ import annotations
 
@@ -310,7 +310,7 @@ async def test_reserve_succeeds_and_persists_the_envelope() -> None:
         ttl_deadline=_NOW + timedelta(seconds=600),
     )
     ctx = uow._ctx
-    # the guarded reserve saw the full applicable set, lock-ordered org < user (§5.3)
+    # the guarded reserve saw the full applicable set, lock-ordered org < user
     assert ctx.reserve_tx.calls == [([_ORG_NODE, _USER_NODE], _PERIOD, _ESTIMATE)]
     assert ctx.reservations.inserted is not None
     record, lines = ctx.reservations.inserted

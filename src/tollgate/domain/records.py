@@ -1,4 +1,4 @@
-"""Value types exchanged across the persistence ports (plan 06).
+"""Value types exchanged across the persistence ports.
 
 These are the immutable rows the repositories write — a reservation and its lines, a ledger
 entry — plus the outcome of an idempotency-key claim. They carry no behaviour and no I/O:
@@ -34,7 +34,7 @@ class LedgerKind(StrEnum):
 
 
 class ClaimOutcome(StrEnum):
-    """The result of claiming an idempotency key (§5.1)."""
+    """The result of claiming an idempotency key."""
 
     FRESH = "fresh"  # claimed now — this caller owns the effect
     REPLAY = "replay"  # the key already completed — return the stored response
@@ -43,7 +43,7 @@ class ClaimOutcome(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class ReservationRecord:
-    """A held reservation row to persist on a successful reserve (§5.2).
+    """A held reservation row to persist on a successful reserve.
 
     ``status`` is not carried — a fresh reservation is always ``held`` (the column defaults to
     it) — and ``created_at`` is server-defaulted. ``labels`` are opaque chargeback tags stored
@@ -79,7 +79,7 @@ class ReservationLineRecord:
 
 @dataclass(frozen=True, slots=True)
 class LedgerEntry:
-    """One append-only ledger row (§5.2).
+    """One append-only ledger row.
 
     The three deltas default to zero. The token counts are recorded on commit/overage
     entries and left ``None`` elsewhere; ``provider`` and ``price_book_version`` are also
@@ -116,7 +116,7 @@ class LedgerEntry:
 
 @dataclass(frozen=True, slots=True)
 class StoredReservation:
-    """A persisted reservation read back for a lifecycle command (§5.2, §5.4).
+    """A persisted reservation read back for a lifecycle command.
 
     ``record`` is the immutable insert-time row; ``status`` is the live lifecycle state the
     identity guards branch on — held routes to the normal terminal path, reaped to the
@@ -129,7 +129,7 @@ class StoredReservation:
 
 @dataclass(frozen=True, slots=True)
 class ReservationLineView:
-    """A reservation line joined with the budget node it drew on (§5.3, §5.4).
+    """A reservation line joined with the budget node it drew on.
 
     Terminal commands update the same ``budget_balance`` rows concurrent reserves contend on;
     carrying the full :class:`BudgetNode` (not just the ``budget_id``) lets them walk the lines

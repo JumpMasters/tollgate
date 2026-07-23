@@ -1,4 +1,4 @@
-"""The shared background-worker polling loop (§5.5).
+"""The shared background-worker polling loop.
 
 A worker is a pure ``run_once`` tick (a reaper) wrapped by ``run_forever``, which polls it on a
 fixed interval until a stop event is set. Each tick is bounded and idempotent, so a *transient*
@@ -69,7 +69,7 @@ async def run_forever(
     backoff_base_seconds: float = 1.0,
     backoff_max_seconds: float = 60.0,
 ) -> None:
-    """Poll ``tick.run_once`` every ``interval_seconds`` until ``stop`` is set (§5.5).
+    """Poll ``tick.run_once`` every ``interval_seconds`` until ``stop`` is set.
 
     Between ticks the loop waits the interval but wakes immediately when ``stop`` is set (graceful
     shutdown). A tick counts as a failure when it *raises* or when it returns a structured result

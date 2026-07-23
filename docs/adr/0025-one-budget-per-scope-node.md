@@ -7,12 +7,12 @@
 
 A budget governs a scope node — an `org`, `team`, `user`, or `project`. The
 `budget` table currently keys its uniqueness on `(scope_kind, scope_id,
-period_kind)` (§3), which permits a single node to carry two budgets at once: a
+period_kind)`, which permits a single node to carry two budgets at once: a
 `calendar_month` limit *and* a `rolling_days` limit, with different `budget_id`.
 
 The reservation model, however, is built around **one budget per node on the
 enforcement path**. `resolve_applicable_set` assembles the ancestry path ∪ the
-project budget (§5.3); `lock_order_key` deliberately omits `period_start` because,
+project budget; `lock_order_key` deliberately omits `period_start` because,
 within a single reserve, every applicable balance shares one period; and
 `budget_balance` is keyed `(budget_id, period_start)`, with a reserve stamping one
 estimate against lines that all share that period. Two budgets on the same node

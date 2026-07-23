@@ -1,4 +1,4 @@
-"""Integration tests for PostgresPriceBookRepository (real Postgres, §3, ADR 0028)."""
+"""Integration tests for PostgresPriceBookRepository (real Postgres, ADR 0028)."""
 
 from __future__ import annotations
 

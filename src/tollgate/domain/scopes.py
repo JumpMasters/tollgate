@@ -5,9 +5,9 @@ A budget governs one *node* of the tenancy tree — an ``org``, a ``team``, a
 set**: the principal's ancestry path (those of org/team/user that actually carry
 a budget) together with the request's project budget when the credential
 authorizes it. The set is locked and updated in one canonical order so that
-overlapping reserves by sibling users cannot deadlock on the shared parent rows
-(§5.3), and an *empty* set is denied by default — a request governed by no budget
-is not, by the thesis, safely admissible (§5.3).
+overlapping reserves by sibling users cannot deadlock on the shared parent rows,
+and an *empty* set is denied by default — a request governed by no budget
+is not, by the thesis, safely admissible.
 
 This module is pure policy over already-resolved nodes: *which* budgets exist for
 a principal is I/O the application performs against the repository before calling
@@ -34,7 +34,7 @@ class ScopeKind(StrEnum):
     PROJECT = "project"
 
 
-#: Lock-ordering rank: org < team < user < project (§5.3). Every command and the
+#: Lock-ordering rank: org < team < user < project. Every command and the
 #: reaper acquire budget rows in this order, so overlapping operations on shared
 #: parent rows cannot form a lock cycle.
 _SCOPE_RANK: Final[dict[ScopeKind, int]] = {
@@ -66,12 +66,12 @@ class BudgetNode:
 
 @dataclass(frozen=True, slots=True)
 class ReserveOutcome:
-    """The result of a multi-budget reserve across an applicable set (§5.2/§5.3).
+    """The result of a multi-budget reserve across an applicable set.
 
     ``ok`` is true iff every node had headroom and was reserved. On denial ``ok`` is
     false and ``binding_node`` names the most-restrictive node that lacked headroom
-    (most-restrictive resolution, §5.3); the all-or-nothing rollback that discards the
-    partial reserves on the earlier nodes is the command envelope's (plans 09-10), not
+    (most-restrictive resolution); the all-or-nothing rollback that discards the
+    partial reserves on the earlier nodes is the command envelope's, not
     this value's.
     """
 
@@ -85,7 +85,7 @@ class ResolvedProject:
 
     ``org_id`` is the project's owning org, looked up server-side so the reserve can build the
     authorization ancestry ``{ORG: org_id, PROJECT: project_id}`` from trusted data — never the
-    request's assertion (the §5.0 trust caveat in ``authorizes``). ``budget`` is the project's
+    request's assertion (the trust caveat in ``authorizes``). ``budget`` is the project's
     budget node when it carries one, or ``None``: a project may be authorized yet contribute no
     budget to the applicable set.
     """
@@ -98,7 +98,7 @@ class ResolvedProject:
 class ScopeRef:
     """A reference to a scope node (kind + id) independent of any budget.
 
-    The chargeback read API (section 5.0) uses it to name the optional filter node whose subtree a
+    The chargeback read API uses it to name the optional filter node whose subtree a
     caller wants, before any budget is resolved. Unlike ``BudgetNode`` it carries no ``budget_id``.
     """
 
@@ -107,13 +107,13 @@ class ScopeRef:
 
 
 def lock_order_key(node: BudgetNode) -> tuple[int, str]:
-    """Canonical sort key for deadlock-free lock acquisition (§5.3).
+    """Canonical sort key for deadlock-free lock acquisition.
 
     Orders by ``(scope_kind rank, scope_id)``. The storage-layer order is the
     3-tuple ``(scope_kind rank, scope_id, period_start)``; within a single
     reserve every applicable balance shares one ``period_start``, so this
     node-level key is the operative order, and ``period_start`` enters as the
-    final ``ORDER BY`` column where balance rows are loaded (plans 05/07).
+    final ``ORDER BY`` column where balance rows are loaded.
     """
     return (scope_rank(node.scope_kind), node.scope_id)
 
@@ -122,7 +122,7 @@ def resolve_applicable_set(
     ancestry: Iterable[BudgetNode],
     project: BudgetNode | None = None,
 ) -> tuple[BudgetNode, ...]:
-    """Assemble the applicable budget set for a reserve, canonically ordered (§4, §5.3).
+    """Assemble the applicable budget set for a reserve, canonically ordered.
 
     ``ancestry`` is the org/team/user budget nodes that **exist** for the
     principal — the caller has already skipped ancestry scopes without a budget
@@ -138,8 +138,8 @@ def resolve_applicable_set(
     is a configuration the schema forbids, so it is rejected with
     :class:`ConflictingBudgetScope` rather than silently dropping one (which could
     admit a reserve a budget should deny). Raises :class:`BudgetNotFound` if the
-    resulting set is empty: a request governed by no budget is denied by default
-    (§5.3), never vacuously admitted.
+    resulting set is empty: a request governed by no budget is denied by default,
+    never vacuously admitted.
     """
     by_budget: dict[BudgetId, BudgetNode] = {}
     owner: dict[tuple[ScopeKind, str], BudgetId] = {}

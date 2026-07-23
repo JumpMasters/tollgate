@@ -1,4 +1,4 @@
-"""Integration tests for PostgresChargebackRepository (real Postgres, section 2, 5.0)."""
+"""Integration tests for PostgresChargebackRepository (real Postgres)."""
 
 from __future__ import annotations
 
@@ -107,7 +107,7 @@ async def test_balance_row_supplies_live_amounts_and_its_own_limit(
 ) -> None:
     await _seed_tree(db_conn)
     await _budget(db_conn, budget_id="b-u1", scope_kind="user", scope_id="u1", limit=1_000)
-    # an in-period limit change (section 5.5): the balance limit differs from the budget hard limit
+    # an in-period limit change: the balance limit differs from the budget hard limit
     await _balance(db_conn, budget_id="b-u1", limit=1_500, reserved=200, committed=300, overage=50)
     states = await PostgresChargebackRepository(db_conn).subtree_states(
         ScopeKind.USER, "u1", _PERIOD

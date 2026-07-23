@@ -1,4 +1,4 @@
-"""Read-side budget state for the chargeback API (section 2, 5.0).
+"""Read-side budget state for the chargeback API.
 
 ``PostgresChargebackRepository.subtree_states`` enumerates every budget at or below a scope
 node -- the fixed org -> team -> user hierarchy plus the orthogonal project axis, so a bounded
@@ -6,9 +6,9 @@ set of ``IN`` sub-selects, no recursive CTE -- and LEFT JOINs ``budget_balance``
 synthesizing zero state (against the budget's ``hard_limit_micro``) for a node that has had no
 activity this period (no balance row exists yet; a read never seeds one).
 ``resolve_scope_ancestry`` returns a node's server-derived ancestry map for the authorization
-check (section 5.0). ``spend_rollup`` sums one node's own budget ledger rows for a period,
+check. ``spend_rollup`` sums one node's own budget ledger rows for a period,
 grouped by provider, model, or a label key -- joined on ``budget`` for that single node so a
-subtree union never double-counts shared spend (section 2); a node that carries no budget of its
+subtree union never double-counts shared spend; a node that carries no budget of its
 own has no such ledger rows, so it raises ``BudgetNotFound`` rather than silently reporting zero
 spend (#97). ``PostgresChargebackReader`` hands
 out a repository bound to a fresh read-only connection per read. Explicit async SQLAlchemy Core,
@@ -46,9 +46,8 @@ from tollgate.domain.scopes import ScopeKind, scope_rank
 def _subtree_predicate(scope_kind: ScopeKind, scope_id: str) -> ColumnElement[bool]:
     """Budgets at or below ``(scope_kind, scope_id)`` over the fixed hierarchy + project axis.
 
-    Section 5.0. ORG covers its teams, those teams' users, and its projects; TEAM covers itself
-    and its users (a project has no team ancestor, so it is excluded); USER and PROJECT are
-    leaves.
+    ORG covers its teams, those teams' users, and its projects; TEAM covers itself and its users
+    (a project has no team ancestor, so it is excluded); USER and PROJECT are leaves.
     """
     b = budget.c
     if scope_kind is ScopeKind.ORG:

@@ -1,4 +1,4 @@
-"""Integration tests for PostgresCounterStore (real Postgres, §5.2/§5.3/§5.5)."""
+"""Integration tests for PostgresCounterStore (real Postgres)."""
 
 from __future__ import annotations
 

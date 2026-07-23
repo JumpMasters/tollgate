@@ -1,4 +1,4 @@
-"""Tests for the bearer authentication dependency (section 5.0, ADR 0031)."""
+"""Tests for the bearer authentication dependency (ADR 0031)."""
 
 from __future__ import annotations
 

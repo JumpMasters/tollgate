@@ -175,8 +175,8 @@ async def test_a_denied_reserve_is_402_and_names_the_binding_node(
     assert response.status_code == 402
     body = response.json()
     assert body["error"]["code"] == "insufficient_budget"
-    assert "u1" in body["error"]["message"]  # names the binding node (section 4)
-    # a denial never persists: no reservation, and the key rolled back (section 5.1)
+    assert "u1" in body["error"]["message"]  # names the binding node
+    # a denial never persists: no reservation, and the key rolled back
     assert await _scalar(committing_engine, "SELECT count(*) FROM reservation") == 0
     assert await _scalar(committing_engine, "SELECT count(*) FROM idempotency_key") == 0
 
@@ -213,7 +213,7 @@ async def test_the_full_lifecycle_over_http(
     extended = await client.post(
         "/v1/extend",
         json={"reservation_id": reservation_id},
-        headers={"Authorization": f"Bearer {_TOKEN}"},  # no Idempotency-Key (section 4)
+        headers={"Authorization": f"Bearer {_TOKEN}"},  # no Idempotency-Key
     )
     assert extended.status_code == 200
     assert extended.json()["reservation_id"] == reservation_id

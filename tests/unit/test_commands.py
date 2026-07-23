@@ -107,7 +107,7 @@ def test_cancel_command_targets_a_reservation() -> None:
 
 
 def test_extend_command_needs_no_idempotency_key() -> None:
-    # extend is a monotonic heartbeat -- naturally idempotent (§4), so it carries no
+    # extend is a monotonic heartbeat -- naturally idempotent, so it carries no
     # idempotency key, only the reservation to advance.
     cmd = ExtendCommand(reservation_id=ReservationId("rsv-1"))
     assert cmd.reservation_id == ReservationId("rsv-1")
@@ -131,7 +131,7 @@ def test_commit_result_splits_committed_and_overage() -> None:
         committed_micro=4_000,
         overage_micro=200,
     )
-    # actual == committed + overage by construction (§4 reconciliation).
+    # actual == committed + overage by construction (reconciliation).
     assert result.committed_micro + result.overage_micro == 4_200
 
 

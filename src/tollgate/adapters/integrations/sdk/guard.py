@@ -1,4 +1,4 @@
-"""The guard: reserve worst-case budget before dispatch, commit/cancel in a finally (section 4)."""
+"""The guard: reserve worst-case budget before dispatch, commit/cancel in a finally."""
 
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ class GuardedCall:
         cached_input_tokens: int = 0,
         cache_creation_tokens: int = 0,
     ) -> None:
-        """Record the provider-reported usage to reconcile on commit (section 4)."""
+        """Record the provider-reported usage to reconcile on commit."""
         self._usage = ProviderUsage(
             input_tokens=input_tokens,
             output_tokens=output_tokens,
@@ -54,7 +54,7 @@ def _default_key() -> str:
 
 
 async def _heartbeat(client: TollgateClient, reservation_id: str, interval: float) -> None:
-    """Extend the reservation's TTL every ``interval`` seconds until cancelled (section 5.4)."""
+    """Extend the reservation's TTL every ``interval`` seconds until cancelled."""
     while True:
         await asyncio.sleep(interval)
         try:
@@ -83,7 +83,7 @@ async def _finalize(
     labels: dict[str, str] | None,
     new_key: Callable[[], str],
 ) -> None:
-    """Resolve the reservation on exit: commit recorded usage, else cancel (section 4, 5.4).
+    """Resolve the reservation on exit: commit recorded usage, else cancel.
 
     Recorded usage is real, provider-billed spend, so it is always committed — even when the body
     raised after ``record_usage`` (#94); only a call that consumed nothing is cancelled.
@@ -142,8 +142,7 @@ async def guard(
     idempotency_key: str | None = None,
     new_key: Callable[[], str] = _default_key,
 ) -> AsyncIterator[GuardedCall]:
-    """Reserve before dispatch; commit on clean exit with usage, else cancel (section 4,
-    section 5.4).
+    """Reserve before dispatch; commit on clean exit with usage, else cancel.
 
     A denied reserve (``BudgetDenied``/``NotAuthorized``) or an unreachable control plane
     (``EnforcementUnavailable``, fail-closed) raises *before* the body runs, so the model call

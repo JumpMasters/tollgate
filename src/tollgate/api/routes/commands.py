@@ -1,9 +1,9 @@
-"""The command routes: reserve, commit, cancel, extend, grace backfill (sections 4-5).
+"""The command routes: reserve, commit, cancel, extend, grace backfill.
 
 Thin translations from the wire to the application handlers the composition
 root placed on ``app.state``: parse the body, lift the Idempotency-Key header
-into the command (section 5.1), call the handler with the authenticated
-context, and shape the typed result. Domain errors propagate to the handler
+into the command, call the handler with the authenticated context, and shape
+the typed result. Domain errors propagate to the handler
 installed by ``tollgate.api.errors`` (ADR 0031).
 """
 
@@ -104,7 +104,7 @@ async def reserve(
     auth: RequestAuth,
     idempotency_key: IdempotencyKey,
 ) -> ReserveResponse:
-    """Reserve worst-case budget for a model call before it dispatches (section 4)."""
+    """Reserve worst-case budget for a model call before it dispatches."""
     handler: ReserveHandler = request.app.state.reserve_handler
     command = ReserveCommand(
         idempotency_key=idempotency_key,
@@ -131,7 +131,7 @@ async def commit(
     auth: RequestAuth,
     idempotency_key: IdempotencyKey,
 ) -> CommitResponse:
-    """Reconcile a reservation to provider-reported usage (section 4)."""
+    """Reconcile a reservation to provider-reported usage."""
     handler: CommitHandler = request.app.state.commit_handler
     command = CommitCommand(
         idempotency_key=idempotency_key,
@@ -153,7 +153,7 @@ async def cancel(
     auth: RequestAuth,
     idempotency_key: IdempotencyKey,
 ) -> CancelResponse:
-    """Release a reservation whose call failed before incurring usage (section 4)."""
+    """Release a reservation whose call failed before incurring usage."""
     handler: CancelHandler = request.app.state.cancel_handler
     command = CancelCommand(
         idempotency_key=idempotency_key,
@@ -168,7 +168,7 @@ async def cancel(
 
 @router.post("/extend", responses=_NO_BUDGET_DENIAL_RESPONSES)
 async def extend(request: Request, body: ExtendRequest, auth: RequestAuth) -> ExtendResponse:
-    """Heartbeat a held reservation; no Idempotency-Key - extend is monotonic (section 4)."""
+    """Heartbeat a held reservation; no Idempotency-Key - extend is monotonic."""
     handler: ExtendHandler = request.app.state.extend_handler
     command = ExtendCommand(reservation_id=ReservationId(body.reservation_id))
     result = await handler.extend(auth, command)
@@ -182,7 +182,7 @@ async def grace_backfill(
     auth: RequestAuth,
     idempotency_key: IdempotencyKey,
 ) -> GraceBackfillResponse:
-    """Backfill spend incurred while enforcement was unreachable (section 5.6, ADR 0030)."""
+    """Backfill spend incurred while enforcement was unreachable (ADR 0030)."""
     handler: GraceBackfillHandler = request.app.state.grace_backfill_handler
     command = GraceBackfillCommand(
         idempotency_key=idempotency_key,
@@ -205,7 +205,7 @@ async def meter(
     auth: RequestAuth,
     idempotency_key: IdempotencyKey,
 ) -> MeterResponse:
-    """Record already-incurred, provider-reported spend; never denies (section 6, ADR 0037)."""
+    """Record already-incurred, provider-reported spend; never denies (ADR 0037)."""
     handler: MeterHandler = request.app.state.meter_handler
     command = MeterCommand(
         idempotency_key=idempotency_key,

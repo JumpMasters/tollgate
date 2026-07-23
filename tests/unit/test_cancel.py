@@ -1,4 +1,4 @@
-"""Unit tests for the cancel handler: release the full estimate, exactly once (§4, §5.2)."""
+"""Unit tests for the cancel handler: release the full estimate, exactly once."""
 
 from __future__ import annotations
 
@@ -322,7 +322,7 @@ async def test_cancel_rejects_a_key_reused_with_a_different_command() -> None:
 
 
 async def test_cancel_of_a_settled_reservation_is_rejected() -> None:
-    # a reaped reservation was already released by the reaper; cancel has no self-heal (§5.4)
+    # a reaped reservation was already released by the reaper; cancel has no self-heal
     handler, uow = _build(claim_terminal_result=False)
     with pytest.raises(ReservationNotHeld):
         await handler.cancel(_auth(), _command())

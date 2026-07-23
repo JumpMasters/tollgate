@@ -1,4 +1,4 @@
-"""End-to-end HTTP proof of ``POST /v1/meter`` against real Postgres (section 6, ADR 0037).
+"""End-to-end HTTP proof of ``POST /v1/meter`` against real Postgres (ADR 0037).
 
 Mirrors ``test_api_http.py``: drives ``build_app`` over ``httpx.ASGITransport`` against the real
 PG17 container, seeding a credential, budgets, and a price row by hand. Proves the three

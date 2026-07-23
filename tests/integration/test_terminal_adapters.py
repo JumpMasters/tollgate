@@ -1,4 +1,4 @@
-"""Integration tests for the plan-10 adapter surface (real Postgres, §5.2/§5.4).
+"""Integration tests for the terminal-command adapter surface (real Postgres).
 
 Covers the recovery-path counter primitive (``apply_spend``), the reservation read-back and
 guards (``find`` / ``find_lines`` / ``claim_late_commit`` / ``advance_ttl``), and the
@@ -240,7 +240,7 @@ async def test_resolve_price_is_per_pair_latest_not_global_latest(
     db_conn: AsyncConnection,
 ) -> None:
     # Locks the ADR 0028 consequence: a pair omitted from a newer book still resolves to
-    # the latest version that priced *it* (plan-09 review carryover).
+    # the latest version that priced *it*.
     await _publish_prices(db_conn)  # v1 (May) and v2 (June) both price anthropic/claude
     await db_conn.execute(
         price.insert().values(

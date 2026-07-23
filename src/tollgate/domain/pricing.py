@@ -1,6 +1,6 @@
 """The provider-qualified cost model.
 
-Prices live in a versioned, immutable price book (§3); this module is the pure
+Prices live in a versioned, immutable price book; this module is the pure
 arithmetic over one *resolved* price: the worst-case reserve estimate, the
 reconciled actual cost from provider-reported usage, and the split of an actual
 against its reservation into committed-versus-overage. Amounts are integer
@@ -46,7 +46,7 @@ class ModelPrice:
 
 @dataclass(frozen=True, slots=True)
 class PricedModel:
-    """A resolved price plus the price-book version it came from (§3, ADR 0028).
+    """A resolved price plus the price-book version it came from (ADR 0028).
 
     The reserve resolves the *current* price for a ``(provider, model)`` and stamps ``version`` on
     the reservation; the matching commit reconciles against the **same** version, so a historical
@@ -59,7 +59,7 @@ class PricedModel:
 
 @dataclass(frozen=True, slots=True)
 class Reconciliation:
-    """The split of an actual cost against its reservation (§4).
+    """The split of an actual cost against its reservation.
 
     ``committed_micro`` is the part of the reservation that converts to real spend
     (at most the reserved estimate); ``overage_micro`` is audited drift above it.
@@ -96,7 +96,7 @@ def actual_micro(
     cached_input_tokens: int = 0,
     cache_creation_tokens: int = 0,
 ) -> int:
-    """Reconciled cost from provider-reported usage (§4).
+    """Reconciled cost from provider-reported usage.
 
     ``cached_input_tokens`` is the subset of ``input_tokens`` served from the provider's
     prompt cache, priced at the cached rate; the remaining input tokens and all output tokens
@@ -124,10 +124,10 @@ def actual_micro(
 
 
 def reconcile(*, reserved_micro: int, actual: int) -> Reconciliation:
-    """Split an actual cost against its reservation into committed and overage (§4).
+    """Split an actual cost against its reservation into committed and overage.
 
     Mirrors the SQL ``LEAST(:actual, :est)`` / ``GREATEST(:actual - :est, 0)`` in the
-    commit guard (§5.2): commit moves at most the reserved estimate; any excess is
+    commit guard: commit moves at most the reserved estimate; any excess is
     audited overage. ``actual`` is the reconciled cost from :func:`actual_micro`.
     """
     if reserved_micro < 0 or actual < 0:

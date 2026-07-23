@@ -1,11 +1,11 @@
-"""PostgresIdempotencyRepository: claim/replay over a per-principal idempotency table (§5.1).
+"""PostgresIdempotencyRepository: claim/replay over a per-principal idempotency table.
 
 The composite ``(principal_id, key)`` primary key serializes duplicate commands per principal (#71).
 ``claim`` inserts the row with ``ON CONFLICT (principal_id, key) DO NOTHING … RETURNING``: a
 returned row means this caller claimed it (``FRESH``); no row means the key already exists, so the
 stored response is replayed (``REPLAY``) unless the command fingerprint differs (``MISMATCH`` = key
 reuse). ``store_response`` caches the outcome on that row at the end of the command transaction.
-Cross-transaction serialization of concurrent duplicates is exercised in plan 07.
+Cross-transaction serialization of concurrent duplicates is exercised separately.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ _MAX_CLAIM_ATTEMPTS: Final = 3
 
 
 class PostgresIdempotencyRepository:
-    """Per-principal idempotency claim/replay on one bound connection (§5.1, #71).
+    """Per-principal idempotency claim/replay on one bound connection (#71).
 
     The target table is injectable so the same claim/replay/mismatch mechanism serves both the
     reaped ``idempotency_key`` table (reserve/commit/cancel, whose durable dedup lives elsewhere)
@@ -41,7 +41,7 @@ class PostgresIdempotencyRepository:
         self._table = table
 
     async def claim(self, principal_id: str, key: str, fingerprint: str) -> IdempotencyClaim:
-        """Claim ``(principal_id, key)`` for ``fingerprint`` (§5.1); see the port for outcomes.
+        """Claim ``(principal_id, key)`` for ``fingerprint``; see the port for outcomes.
 
         ``INSERT … ON CONFLICT DO NOTHING … RETURNING`` claims the key; on conflict a follow-up
         ``SELECT`` reads the existing row to decide REPLAY vs MISMATCH. The two statements are not
@@ -104,7 +104,7 @@ class PostgresIdempotencyRepository:
             raise TollgateError(f"idempotency store_response matched {result.rowcount} rows, not 1")
 
     async def delete_expired(self, cutoff: datetime, limit: int) -> int:
-        """Delete up to ``limit`` keys created before ``cutoff``; return the count removed (§5.5).
+        """Delete up to ``limit`` keys created before ``cutoff``; return the count removed.
 
         Bounded so the reaper never issues one unbounded delete — the caller loops until a batch
         comes back short. Keys are addressed via a ``(principal_id, key)`` primary-key sub-select

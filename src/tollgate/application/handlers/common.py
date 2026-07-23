@@ -1,11 +1,11 @@
-"""Shared helpers for the command handlers (§5).
+"""Shared helpers for the command handlers.
 
-The five mutating commands share four concerns: the canonical idempotency fingerprint (§5.1),
-a reservation ownership check that never reveals whether a foreign reservation exists (§5.0),
-the canonical §5.3 lock ordering of a reservation's lines, and applicable-set resolution with
-the project authorization re-check (§4, §5.0). They live here so reserve (plan 09) and the
-lifecycle/backfill commands (plan 10) cannot drift apart. Helpers take the narrowest port they
-need, not the whole command context.
+The five mutating commands share four concerns: the canonical idempotency fingerprint,
+a reservation ownership check that never reveals whether a foreign reservation exists,
+the canonical lock ordering of a reservation's lines, and applicable-set resolution with
+the project authorization re-check. They live here so reserve and the lifecycle/backfill
+commands cannot drift apart. Helpers take the narrowest port they need, not the whole
+command context.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ from tollgate.domain.scopes import (
 
 
 def command_fingerprint(payload: dict[str, Any]) -> str:
-    """Hash a command's salient fields into a stable idempotency fingerprint (§5.1).
+    """Hash a command's salient fields into a stable idempotency fingerprint.
 
     Canonical JSON (sorted keys — including nested mappings — no whitespace), then SHA-256, so
     field order never changes the fingerprint. Callers pass every field that distinguishes one
@@ -43,7 +43,7 @@ def command_fingerprint(payload: dict[str, Any]) -> str:
 async def load_owned_reservation(
     reservations: ReservationRepository, auth: AuthContext, reservation_id: ReservationId
 ) -> StoredReservation:
-    """Load a reservation the acting principal owns, or deny without an existence leak (§5.0).
+    """Load a reservation the acting principal owns, or deny without an existence leak.
 
     Only the principal a reservation was reserved for may drive its lifecycle — the same
     identity the credential derived at reserve time. An unknown id and another principal's
@@ -57,7 +57,7 @@ async def load_owned_reservation(
 
 
 def ordered_lines(lines: Sequence[ReservationLineView]) -> list[ReservationLineView]:
-    """Sort a reservation's lines into the canonical §5.3 lock order.
+    """Sort a reservation's lines into the canonical lock order.
 
     Terminal commands update the same ``budget_balance`` rows concurrent reserves contend on;
     walking them in the one shared order — scope rank, scope_id, period_start — is what keeps
@@ -69,7 +69,7 @@ def ordered_lines(lines: Sequence[ReservationLineView]) -> list[ReservationLineV
 async def resolve_applicable_nodes(
     budgets: BudgetRepository, auth: AuthContext, project_id: ProjectId | None
 ) -> tuple[BudgetNode, ...]:
-    """Resolve the applicable budget set: ancestry plus the authorized project (§4, §5.0, §5.3).
+    """Resolve the applicable budget set: ancestry plus the authorized project.
 
     The project's org ancestry is server-derived (never the request's assertion) and re-checked
     against the credential inside the transaction; an unknown project is rejected identically

@@ -1,4 +1,4 @@
-"""Unit tests for the chargeback read view and its reserved-inclusive alert logic (section 2, 3)."""
+"""Unit tests for the chargeback read view and its reserved-inclusive alert logic."""
 
 from __future__ import annotations
 

@@ -1,14 +1,14 @@
-"""The commit command handler: reconcile a held reservation against actual usage (§4, §5).
+"""The commit command handler: reconcile a held reservation against actual usage.
 
-Runs the §5 envelope in one transaction: claim the idempotency key, load and authorize the
+Runs the command envelope in one transaction: claim the idempotency key, load and authorize the
 reservation, recompute the actual cost from provider-reported tokens at the reservation's
-**stamped** price-book version (§4 — never the latest), claim the identity guard, then walk the
+**stamped** price-book version (never the latest), claim the identity guard, then walk the
 lines in canonical lock order moving at most the reserved estimate into committed with any
 excess as audited overage. A commit that finds the reservation *reaped* does not no-op: it
 claims the one legal post-reap transition and applies the actual against each line's live
-remaining — the §5.4 self-healing late commit (ADR 0029) — so real, already-incurred spend is
+remaining — the self-healing late commit (ADR 0029) — so real, already-incurred spend is
 always recorded. Every denial raises a typed error that rolls the whole transaction back; only
-a success persists its idempotency key (§5.1).
+a success persists its idempotency key.
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ from tollgate.domain.reservations import ReservationStatus
 
 
 def commit_fingerprint(principal: Principal, command: CommitCommand) -> str:
-    """Fingerprint of a commit for idempotency-key reuse detection (§5.1).
+    """Fingerprint of a commit for idempotency-key reuse detection.
 
     Folds the derived principal, the target reservation, and the provider-reported usage — a
     retry of the same reconciliation matches; a different one is key reuse. The ``"command"``
@@ -73,7 +73,7 @@ def _result_to_response(result: CommitResult) -> dict[str, Any]:
 
 
 def _result_from_response(data: Mapping[str, Any]) -> CommitResult:
-    """Reconstruct a commit result from a cached idempotency response (the replay path, §5.1)."""
+    """Reconstruct a commit result from a cached idempotency response (the replay path)."""
     return CommitResult(
         reservation_id=ReservationId(str(data["reservation_id"])),
         committed_micro=int(data["committed_micro"]),
@@ -82,20 +82,20 @@ def _result_from_response(data: Mapping[str, Any]) -> CommitResult:
 
 
 class CommitHandler:
-    """Runs the commit command end-to-end inside one transaction (§4, §5)."""
+    """Runs the commit command end-to-end inside one transaction."""
 
     def __init__(self, *, uow: UnitOfWork, ids: IdGenerator) -> None:
         self._uow = uow
         self._ids = ids
 
     async def commit(self, auth: AuthContext, command: CommitCommand) -> CommitResult:
-        """Reconcile the reservation against provider-reported usage, exactly once (§4, §5.2).
+        """Reconcile the reservation against provider-reported usage, exactly once.
 
         Raises :class:`ScopeNotAuthorized` for an unknown or foreign reservation (identically —
         no existence leak), :class:`ReservationNotHeld` when the terminal effect already
         happened under a different key, :class:`IdempotencyKeyReuse` on key reuse, and
         :class:`UnknownModel` if the stamped price row is missing. A reaped reservation
-        self-heals (§5.4) instead of failing.
+        self-heals instead of failing.
         """
         fingerprint = commit_fingerprint(auth.principal, command)
         principal_id = auth.credential.principal_id
@@ -125,9 +125,9 @@ class CommitHandler:
             )
             lines = ordered_lines(await tx.reservations.find_lines(command.reservation_id))
 
-            # The identity guards decide the path (§5.2): held -> normal reconciliation;
+            # The identity guards decide the path: held -> normal reconciliation;
             # reaped -> the one legal post-reap transition, the self-healing late commit
-            # (§5.4, ADR 0029); anything else already settled -> rejected.
+            # (ADR 0029); anything else already settled -> rejected.
             if await tx.reservations.claim_terminal(
                 command.reservation_id, ReservationStatus.COMMITTED
             ):
@@ -151,7 +151,7 @@ class CommitHandler:
         record: ReservationRecord,
         actual: int,
     ) -> CommitResult:
-        """The normal path: move at most the reserved estimate on every line (§4, §5.2)."""
+        """The normal path: move at most the reserved estimate on every line."""
         entries: list[LedgerEntry] = []
         for line in lines:
             # Every line held the same estimate in V1, so line_split == the result split;
@@ -209,7 +209,7 @@ class CommitHandler:
         record: ReservationRecord,
         actual: int,
     ) -> CommitResult:
-        """The §5.4 self-heal: record real spend against each line's live remaining (ADR 0029).
+        """The self-heal: record real spend against each line's live remaining (ADR 0029).
 
         The reap already released the estimate, so nothing moves out of ``reserved``
         (``delta_reserved == 0``); committed takes what fits in each node's remaining and the

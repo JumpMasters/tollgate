@@ -45,7 +45,7 @@ class CounterStore(Protocol):
         """Lazily create the period's balance row, seeded from the budget's limit.
 
         Idempotent (``INSERT … ON CONFLICT DO NOTHING``) so concurrent first-reservers in a
-        new period converge on one row rather than failing (§5.3, §5.5).
+        new period converge on one row rather than failing.
         """
         ...
 
@@ -70,7 +70,7 @@ class CounterStore(Protocol):
     async def apply_spend(
         self, budget_id: BudgetId, period_start: datetime, amount_micro: int
     ) -> Reconciliation:
-        """Apply already-incurred spend against the node's live remaining (§5.4, §5.6).
+        """Apply already-incurred spend against the node's live remaining.
 
         For the recovery paths with no held estimate — the self-healing late commit (ADR 0029)
         and the grace backfill (ADR 0030) — committed takes what fits in ``remaining = limit -
@@ -98,8 +98,8 @@ class ReservationRepository(Protocol):
         """Atomically move a reservation from held to a terminal state.
 
         Returns whether this caller won the claim, which is what makes a terminal effect
-        exactly-once (§5.2). A second claim for the same reservation finds ``status ≠ 'held'``,
-        matches zero rows, and returns ``False`` → idempotent replay / self-heal (§5.4).
+        exactly-once. A second claim for the same reservation finds ``status ≠ 'held'``,
+        matches zero rows, and returns ``False`` → idempotent replay / self-heal.
         """
         ...
 
@@ -110,14 +110,14 @@ class ReservationRepository(Protocol):
     async def find_lines(self, reservation_id: ReservationId) -> Sequence[ReservationLineView]:
         """Return the reservation's lines joined with their budget nodes.
 
-        The node lets terminal commands walk the balances in the canonical §5.3 lock order;
+        The node lets terminal commands walk the balances in the canonical lock order;
         each line's own ``period_start`` is carried because a late commit replays against the
         line's original period (ADR 0029).
         """
         ...
 
     async def claim_late_commit(self, reservation_id: ReservationId) -> bool:
-        """Atomically move a reaped reservation to committed — the §5.4 self-heal guard.
+        """Atomically move a reaped reservation to committed — the self-heal guard.
 
         Returns whether this caller won; ``False`` means the reservation was not ``reaped``
         (still held, terminal, or already late-committed). The identity-guard mechanism of
@@ -131,14 +131,14 @@ class ReservationRepository(Protocol):
         """Monotonically advance a held reservation's TTL; return the resulting deadline.
 
         The stored deadline only ever moves forward, so a stale heartbeat can never shorten a
-        newer one (§5.4). Returns ``None`` when the reservation is not held.
+        newer one. Returns ``None`` when the reservation is not held.
         """
         ...
 
     async def claim_next_expired(
         self, now: datetime, exclude_ids: Sequence[ReservationId] = ()
     ) -> StoredReservation | None:
-        """Atomically claim and reap the oldest held reservation past its TTL (§5.4, §5.5).
+        """Atomically claim and reap the oldest held reservation past its TTL.
 
         Returns the reaped reservation (its ``record`` carries the provider / price-book version
         the caller stamps on the ``reap`` ledger rows), or ``None`` when no held reservation has a
@@ -153,7 +153,7 @@ class ReservationRepository(Protocol):
 
 
 class IdempotencyRepository(Protocol):
-    """Claim/replay store for command idempotency keys, scoped per principal (§5.1, #71)."""
+    """Claim/replay store for command idempotency keys, scoped per principal (#71)."""
 
     async def claim(self, principal_id: str, key: str, fingerprint: str) -> IdempotencyClaim:
         """Claim ``key`` for ``fingerprint`` within ``principal_id``'s key namespace.
@@ -172,7 +172,7 @@ class IdempotencyRepository(Protocol):
         ...
 
     async def delete_expired(self, cutoff: datetime, limit: int) -> int:
-        """Delete up to ``limit`` keys created before ``cutoff``; return the count removed (§5.5).
+        """Delete up to ``limit`` keys created before ``cutoff``; return the count removed.
 
         Bounded so the reaper issues no single unbounded delete; the caller loops until a batch
         returns fewer than ``limit``. ``cutoff`` fixed at the caller's tick start guarantees the
@@ -182,7 +182,7 @@ class IdempotencyRepository(Protocol):
 
 
 class LedgerRepository(Protocol):
-    """Append-only writer for the audit ledger (§5.2)."""
+    """Append-only writer for the audit ledger."""
 
     async def append(self, entries: Sequence[LedgerEntry]) -> None:
         """Append one or more ledger rows in the current transaction (never summed here)."""
@@ -190,7 +190,7 @@ class LedgerRepository(Protocol):
 
 
 class ReserveTransaction(Protocol):
-    """Multi-budget, all-or-nothing guarded reserve across an applicable set (§5.2/§5.3)."""
+    """Multi-budget, all-or-nothing guarded reserve across an applicable set."""
 
     async def reserve(
         self,
@@ -202,13 +202,13 @@ class ReserveTransaction(Protocol):
 
         Returns ``ReserveOutcome(ok=True)`` iff every node had headroom. On the first node
         without headroom returns ``ReserveOutcome(ok=False, binding_node=node)`` and leaves the
-        walk's earlier reserves in place for the caller's transaction to roll back (§5.3).
+        walk's earlier reserves in place for the caller's transaction to roll back.
         """
         ...
 
 
 class CredentialRepository(Protocol):
-    """Read-only lookups behind credential authentication (§5.0).
+    """Read-only lookups behind credential authentication.
 
     Authentication runs *before* the command transaction: it hashes the presented token, finds
     the matching credential, and derives the principal. The repository returns rows faithfully —
@@ -246,7 +246,7 @@ class IdGenerator(Protocol):
 
 
 class PriceBookRepository(Protocol):
-    """Resolves the current price for a ``(provider, model)`` from the versioned price book (§3)."""
+    """Resolves the current price for a ``(provider, model)`` from the versioned price book."""
 
     async def resolve_price(self, provider: str, model: str) -> PricedModel | None:
         """Return the current price and its version, or ``None`` if the pair is unpriced.
@@ -260,14 +260,14 @@ class PriceBookRepository(Protocol):
     async def price_at(self, version: str, provider: str, model: str) -> ModelPrice | None:
         """Return the price stamped at exactly ``version``, or ``None`` if that row is absent.
 
-        A commit reconciles against the reservation's stamped version (§4), never the latest —
+        A commit reconciles against the reservation's stamped version, never the latest —
         the immutable price book guarantees the row still says what it said at reserve time.
         """
         ...
 
 
 class BudgetRepository(Protocol):
-    """Reads the budget nodes a reserve gates against (§4, §5.3)."""
+    """Reads the budget nodes a reserve gates against."""
 
     async def find_ancestry_budgets(self, principal: Principal) -> Sequence[BudgetNode]:
         """Return the budgets that exist on the principal's ``org`` / ``team`` / ``user`` nodes.
@@ -287,7 +287,7 @@ class BudgetRepository(Protocol):
 
 
 class CommandContext(Protocol):
-    """The repository Ports bound to one command's transaction (§5).
+    """The repository Ports bound to one command's transaction.
 
     A :class:`UnitOfWork` yields this inside an open transaction; every Port here shares the same
     connection, so a command's resolution reads and its guarded writes commit — or roll back — as
@@ -321,11 +321,11 @@ class CommandContext(Protocol):
 
 
 class UnitOfWork(Protocol):
-    """Brackets a command in one database transaction — the §5 envelope.
+    """Brackets a command in one database transaction — the command envelope.
 
     ``begin()`` opens a transaction and yields a :class:`CommandContext`; leaving the context
     normally commits, and leaving it via an exception rolls back — so an insufficient-budget denial
-    (which raises) discards its partial reserves and its idempotency claim atomically (§5.1, §5.3).
+    (which raises) discards its partial reserves and its idempotency claim atomically.
     """
 
     def begin(self) -> AbstractAsyncContextManager[CommandContext]:
@@ -334,7 +334,7 @@ class UnitOfWork(Protocol):
 
 
 class ChargebackRepository(Protocol):
-    """Read-only budget-state queries for the chargeback API (section 2, 5.0). Off the command
+    """Read-only budget-state queries for the chargeback API. Off the command
     path.
     """
 
@@ -357,7 +357,7 @@ class ChargebackRepository(Protocol):
         exist.
 
         The map is what :func:`tollgate.domain.credentials.authorizes` consumes to check that a
-        filter node is at or below the credential (section 5.0) -- built from trusted structure
+        filter node is at or below the credential -- built from trusted structure
         rows, never from request-asserted ids.
         """
         ...

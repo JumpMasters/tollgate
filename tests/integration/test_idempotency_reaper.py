@@ -1,4 +1,4 @@
-"""End-to-end: the idempotency reaper deletes only aged keys, in bounded batches (§5.5)."""
+"""End-to-end: the idempotency reaper deletes only aged keys, in bounded batches."""
 
 from __future__ import annotations
 

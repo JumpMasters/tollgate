@@ -3,7 +3,7 @@
 One exception handler covers the whole ``TollgateError`` taxonomy, so every
 route and dependency surfaces domain failures through the same envelope:
 ``{"error": {"code": ..., "message": ...}}``. Budget denials map to 402 and
-are never cached by the idempotency layer (section 5.1); authentication
+are never cached by the idempotency layer; authentication
 failures carry ``WWW-Authenticate: Bearer`` per RFC 6750.
 """
 

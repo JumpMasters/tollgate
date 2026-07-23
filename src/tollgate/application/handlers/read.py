@@ -1,12 +1,11 @@
-"""ChargebackHandler: budget-state reads authorized to a credential's scope subtree (section 2,
-5.0).
+"""ChargebackHandler: budget-state reads authorized to a credential's scope subtree.
 
-A read carries a bearer credential like every command (section 5.0), but authorizes in the inverse
+A read carries a bearer credential like every command, but authorizes in the inverse
 direction: rather than gating one target against the credential, it returns every budget node at or
 below the credential's scope. With no filter the subtree is rooted at the credential's own node; an
 optional ``scope`` filter re-roots it at a named sub-node, which must itself be at or below the
 credential (checked with server-derived ancestry via :func:`authorizes`) or the read is refused
-identically to an unknown node -- no existence leak (section 5.0). Off the command path: a read-only
+identically to an unknown node -- no existence leak. Off the command path: a read-only
 connection, no transaction envelope, no idempotency.
 """
 
@@ -37,7 +36,7 @@ class ChargebackHandler:
 
         No filter -> the credential's own node (self-authorized). A filter must be at or below the
         credential (checked against server-derived ancestry); an unknown node and a foreign node are
-        both refused identically as :class:`ScopeNotAuthorized` -- no existence leak (section 5.0).
+        both refused identically as :class:`ScopeNotAuthorized` -- no existence leak.
         """
         if scope is None:
             return auth.credential.scope_kind, auth.credential.scope_id
@@ -66,7 +65,7 @@ class ChargebackHandler:
         scope: ScopeRef | None = None,
         period_start: datetime | None = None,
     ) -> SpendRollup:
-        """Return a node's realized spend for a period, grouped by ``group_by`` (section 2, 5.0)."""
+        """Return a node's realized spend for a period, grouped by ``group_by``."""
         raw = self._clock.now() if period_start is None else period_start
         if raw.tzinfo is None:
             raw = raw.replace(tzinfo=UTC)

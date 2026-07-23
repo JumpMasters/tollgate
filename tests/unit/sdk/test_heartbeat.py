@@ -1,4 +1,4 @@
-"""The guard heartbeats extend while the block is open (spec §5.4)."""
+"""The guard heartbeats extend while the block is open."""
 
 from __future__ import annotations
 
