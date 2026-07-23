@@ -10,6 +10,7 @@ from loadtest.harness import (
     HarnessTree,
     NaiveStrategy,
     OccStrategy,
+    ReserveStrategy,
     _drop_harness_balance,
     _ensure_harness_balance,
     _read_harness_balances,
@@ -37,12 +38,12 @@ async def _reserved(engine: AsyncEngine, budget_id: str) -> int:
 
 
 async def _one_reserve(
-    engine: AsyncEngine, strategy: object, nodes: list[str], amount: int
+    engine: AsyncEngine, strategy: ReserveStrategy, nodes: list[str], amount: int
 ) -> bool:
     async with engine.connect() as conn:
         txn = await conn.begin()
         try:
-            outcome = await strategy.reserve(conn, nodes, _PERIOD, amount)  # type: ignore[attr-defined]
+            outcome = await strategy.reserve(conn, nodes, _PERIOD, amount)
         except Exception:
             await txn.rollback()
             raise
