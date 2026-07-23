@@ -21,6 +21,7 @@ from tollgate.domain.invariants import (
     Balance,
     LedgerDelta,
     amounts_non_negative,
+    committed_rolls_up,
     committed_within_limit,
     conserves,
     reservation_within_limit,
@@ -109,6 +110,80 @@ def _per_node_deltas(rows: list[LedgerRow]) -> dict[NodeKey, list[LedgerDelta]]:
     return deltas
 
 
+def _exactly_once(rows: list[LedgerRow]) -> list[Violation]:
+    """One reserve effect and at most one hold-release effect per (reservation, budget) (§5.2).
+
+    Each reservation reserves a node once (one positive ``delta_reserved``) and releases that
+    hold at most once (one negative ``delta_reserved`` — a commit-of-held, cancel, or reap). The
+    self-healing late commit adds committed spend with ``delta_reserved == 0``, so it does not
+    count as a second release. Grace/meter rows carry no ``reservation_id`` and are skipped.
+    """
+    positive: dict[tuple[str, str], int] = {}
+    negative: dict[tuple[str, str], int] = {}
+    for row in rows:
+        if row.reservation_id is None:
+            continue
+        key = (row.reservation_id, row.budget_id)
+        if row.delta_reserved_micro > 0:
+            positive[key] = positive.get(key, 0) + 1
+        elif row.delta_reserved_micro < 0:
+            negative[key] = negative.get(key, 0) + 1
+    violations: list[Violation] = []
+    for (reservation_id, budget_id), count in sorted(positive.items()):
+        if count > 1:
+            violations.append(
+                Violation(
+                    Check.EXACTLY_ONCE,
+                    f"reservation={reservation_id} budget={budget_id}",
+                    f"{count} reserve effects (expected 1)",
+                )
+            )
+    for (reservation_id, budget_id), count in sorted(negative.items()):
+        if count > 1:
+            violations.append(
+                Violation(
+                    Check.EXACTLY_ONCE,
+                    f"reservation={reservation_id} budget={budget_id}",
+                    f"{count} hold-release effects (expected at most 1)",
+                )
+            )
+    return violations
+
+
+def _tree_rollup(
+    balances: Mapping[NodeKey, Balance], tree_edges: list[TreeEdge]
+) -> list[Violation]:
+    """A budgeted parent's committed equals the sum of its budgeted children's, per period (§7).
+
+    Holds on the normal enforcement path; the self-healing late commit against divergent per-node
+    remaining (§5.4, ADR 0029) is a documented exception, so callers auditing a run that mixed
+    self-heal omit this check.
+    """
+    committed: dict[str, dict[datetime, int]] = {}
+    for (budget_id, period), balance in balances.items():
+        committed.setdefault(budget_id, {})[period] = balance.committed_micro
+    children: dict[str, list[str]] = {}
+    for edge in tree_edges:
+        children.setdefault(edge.parent_budget_id, []).append(edge.child_budget_id)
+    violations: list[Violation] = []
+    for parent, kids in sorted(children.items()):
+        periods = set(committed.get(parent, {}))
+        for kid in kids:
+            periods |= set(committed.get(kid, {}))
+        for period in sorted(periods):
+            parent_committed = committed.get(parent, {}).get(period, 0)
+            kid_committed = [committed.get(kid, {}).get(period, 0) for kid in kids]
+            if not committed_rolls_up(parent_committed, kid_committed):
+                violations.append(
+                    Violation(
+                        Check.TREE_ROLLUP,
+                        f"budget={parent} period={period.isoformat()}",
+                        f"parent {parent_committed} != sum children {sum(kid_committed)}",
+                    )
+                )
+    return violations
+
+
 def evaluate(
     *,
     balances: Mapping[NodeKey, Balance],
@@ -149,4 +224,9 @@ def evaluate(
             violations.append(
                 Violation(Check.CONSERVATION, scope, f"ledger sums do not reconstruct {balance!r}")
             )
+    rows_list = rows  # already materialised above
+    if Check.EXACTLY_ONCE in checks:
+        violations.extend(_exactly_once(rows_list))
+    if Check.TREE_ROLLUP in checks:
+        violations.extend(_tree_rollup(balances, list(tree_edges)))
     return OracleReport(violations=tuple(violations))

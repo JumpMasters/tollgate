@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from loadtest.oracle import Check, LedgerRow, OracleReport, Violation, evaluate
+from loadtest.oracle import Check, LedgerRow, OracleReport, TreeEdge, Violation, evaluate
 
 from tollgate.domain.invariants import Balance
 
@@ -100,3 +100,98 @@ def test_violation_carries_scope_and_detail() -> None:
     assert isinstance(violation, Violation)
     assert "b1" in violation.scope
     assert "150" in violation.detail
+
+
+def test_double_release_flags_exactly_once() -> None:
+    rows = [
+        LedgerRow("b1", _P, "r1", 10, 0, 0),  # reserve
+        LedgerRow("b1", _P, "r1", -10, 10, 0),  # commit-of-held
+        LedgerRow("b1", _P, "r1", -10, 10, 0),  # bug: a second release effect
+    ]
+    report = evaluate(
+        balances={},
+        ledger_rows=rows,
+        reservations=[],
+        tree_edges=[],
+        checks=frozenset({Check.EXACTLY_ONCE}),
+    )
+    assert [v.check for v in report.violations] == [Check.EXACTLY_ONCE]
+    assert "r1" in report.violations[0].scope
+
+
+def test_double_reserve_flags_exactly_once() -> None:
+    rows = [
+        LedgerRow("b1", _P, "r1", 10, 0, 0),
+        LedgerRow("b1", _P, "r1", 10, 0, 0),  # bug: reserved twice
+    ]
+    report = evaluate(
+        balances={},
+        ledger_rows=rows,
+        reservations=[],
+        tree_edges=[],
+        checks=frozenset({Check.EXACTLY_ONCE}),
+    )
+    assert [v.check for v in report.violations] == [Check.EXACTLY_ONCE]
+
+
+def test_reaped_then_committed_is_exactly_once() -> None:
+    rows = [
+        LedgerRow("b1", _P, "r1", 10, 0, 0),  # reserve
+        LedgerRow("b1", _P, "r1", -10, 0, 0),  # reap (releases the hold)
+        LedgerRow("b1", _P, "r1", 0, 8, 0),  # self-healing late commit (delta_reserved == 0)
+    ]
+    report = evaluate(
+        balances={},
+        ledger_rows=rows,
+        reservations=[],
+        tree_edges=[],
+        checks=frozenset({Check.EXACTLY_ONCE}),
+    )
+    assert report.ok
+
+
+def test_meter_rows_without_reservation_are_ignored_by_exactly_once() -> None:
+    rows = [
+        LedgerRow("b1", _P, None, 0, 5, 0),  # meter
+        LedgerRow("b1", _P, None, 0, 5, 0),  # meter again — legitimately distinct spend
+    ]
+    report = evaluate(
+        balances={},
+        ledger_rows=rows,
+        reservations=[],
+        tree_edges=[],
+        checks=frozenset({Check.EXACTLY_ONCE}),
+    )
+    assert report.ok
+
+
+def test_tree_rollup_flags_parent_child_mismatch() -> None:
+    balances = {
+        ("b-t1", _P): Balance(1000, 0, 30, 0),
+        ("b-u1", _P): Balance(500, 0, 20, 0),
+    }
+    report = evaluate(
+        balances=balances,
+        ledger_rows=[],
+        reservations=[],
+        tree_edges=[TreeEdge("b-t1", "b-u1")],
+        checks=frozenset({Check.TREE_ROLLUP}),
+    )
+    assert [v.check for v in report.violations] == [Check.TREE_ROLLUP]
+    assert "b-t1" in report.violations[0].scope
+
+
+def test_tree_rollup_ok_when_children_sum_to_parent() -> None:
+    balances = {
+        ("b-t1", _P): Balance(1000, 0, 30, 0),
+        ("b-u1", _P): Balance(500, 0, 20, 0),
+        ("b-u2", _P): Balance(500, 0, 10, 0),
+    }
+    report = evaluate(
+        balances=balances,
+        ledger_rows=[],
+        reservations=[],
+        tree_edges=[TreeEdge("b-t1", "b-u1"), TreeEdge("b-t1", "b-u2")],
+        checks=frozenset({Check.TREE_ROLLUP}),
+    )
+    assert report.ok
