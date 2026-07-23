@@ -1,4 +1,4 @@
-"""§7 pillar 1: a model-based Hypothesis machine drives the real handlers over random valid
+"""A model-based Hypothesis machine drives the real handlers over random valid
 command sequences and asserts the spend invariants at every node after every step.
 
 Each rule issues a real command against a testcontainer Postgres while a pure in-memory reference
@@ -53,16 +53,14 @@ from tollgate.domain.scopes import ScopeKind
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
-    from typing import Any, TypeVar
-
-    _T = TypeVar("_T")
+    from typing import Any
 
 # --- module globals set by the sync entrypoint; the machine drives everything through them ---
 _ENGINE: AsyncEngine | None = None
 _LOOP: asyncio.AbstractEventLoop | None = None
 
 
-def _run(coro: Coroutine[Any, Any, _T]) -> _T:  # noqa: UP047 -- TypeVar kept under TYPE_CHECKING
+def _run[T](coro: Coroutine[Any, Any, T]) -> T:
     assert _LOOP is not None, "the stateful entrypoint must set the private event loop"
     return _LOOP.run_until_complete(coro)
 
