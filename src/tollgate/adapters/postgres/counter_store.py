@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import literal, select, update
+from sqlalchemy import ColumnElement, literal, select, true, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -61,21 +61,29 @@ class PostgresCounterStore:
         await self._conn.execute(stmt)
 
     async def reserve(self, budget_id: BudgetId, period_start: datetime, amount_micro: int) -> bool:
-        """Guarded reserve: succeed iff the node has headroom.
+        """Guarded reserve: succeed iff the node has headroom, or the hold is zero-cost.
 
-        ``remaining = limit - reserved - committed - overage``; the conditional
-        ``WHERE`` is the guard, so zero rows updated means no headroom → denied.
+        ``remaining = limit - reserved - committed - overage``; the conditional ``WHERE`` is the
+        guard, so an over-budget positive reserve matches zero rows and is denied. A zero-cost hold
+        (a free or zero-priced model) holds nothing and cannot breach the invariant, so it is
+        admitted unconditionally — even at a node already in overage — so free and paid models
+        transit the same primitive (#127).
         """
+        guard: ColumnElement[bool] = (
+            true()
+            if amount_micro == 0
+            else budget_balance.c.limit_micro
+            - budget_balance.c.reserved_micro
+            - budget_balance.c.committed_micro
+            - budget_balance.c.overage_micro
+            >= amount_micro
+        )
         stmt = (
             update(budget_balance)
             .where(
                 budget_balance.c.budget_id == budget_id,
                 budget_balance.c.period_start == period_start,
-                budget_balance.c.limit_micro
-                - budget_balance.c.reserved_micro
-                - budget_balance.c.committed_micro
-                - budget_balance.c.overage_micro
-                >= amount_micro,
+                guard,
             )
             .values(reserved_micro=budget_balance.c.reserved_micro + amount_micro)
         )
