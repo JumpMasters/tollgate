@@ -173,3 +173,4 @@ async def test_product_path_stays_correct_under_concurrency(committing_engine: A
     assert metrics.overspend_micro == 0  # the real guard + storage CHECK never overspend
     assert metrics.committed > 0  # work actually happened
     assert metrics.reaped > 0  # abandoned reserves were reclaimed exactly once
+    assert metrics.duplicates > 0  # the duplicate-idempotency-key dedup path executed

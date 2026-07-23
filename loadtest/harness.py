@@ -143,10 +143,14 @@ async def _drop_harness_balance(engine: AsyncEngine) -> None:
 
 
 def _overspend_micro(balances: dict[NodeKey, Balance]) -> int:
-    """Total micro-USD admitted past every node's limit (``reserved+committed+overage - limit``)."""
+    """Micro-USD admitted past every node's storage limit.
+
+    Storage-guard breach definition: ``reserved+committed - limit``. *Audited overage* is a
+    separate, deliberately-allowed class that may sit past the limit, so it is NOT counted here -- a
+    node with legitimate overage is not an over-admission.
+    """
     return sum(
-        max(b.reserved_micro + b.committed_micro + b.overage_micro - b.limit_micro, 0)
-        for b in balances.values()
+        max(b.reserved_micro + b.committed_micro - b.limit_micro, 0) for b in balances.values()
     )
 
 
