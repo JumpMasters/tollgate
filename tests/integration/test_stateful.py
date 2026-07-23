@@ -204,7 +204,7 @@ class _ReferenceModel:
 
     def apply_reap(self, now: datetime) -> None:
         for state in self.res.values():
-            if state.status == "held" and state.ttl <= now:
+            if state.status == "held" and state.ttl < now:
                 for budget_id in state.nodes:
                     self.nodes[budget_id].reserved -= state.estimate
                 state.status = "reaped"
