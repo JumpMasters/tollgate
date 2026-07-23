@@ -16,17 +16,19 @@ strategies are deliberately-flawed strawmen; only the guarded write is the produ
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import math
+import os
 import random
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Protocol
 
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
+from sqlalchemy import pool, text
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 
 from loadtest.oracle import Check, evaluate
 from tollgate.domain.invariants import Balance
@@ -411,3 +413,108 @@ STRATEGIES: dict[str, ReserveStrategy] = {
     "occ": OccStrategy(),
     "guarded": GuardedStrategy(),
 }
+
+
+_COLUMNS = (
+    "strategy",
+    "concurrency",
+    "throughput/s",
+    "p99_ms",
+    "overspend",
+    "retries",
+    "violations",
+)
+
+
+def format_table(rows: Sequence[RunMetrics]) -> str:
+    """Render the shootout results as a fixed-width table (header + one line per run)."""
+    cells: list[tuple[str, ...]] = [_COLUMNS]
+    for r in rows:
+        cells.append(
+            (
+                r.strategy,
+                str(r.concurrency),
+                f"{r.throughput_ops_per_s:.0f}",
+                f"{r.p99_ms:.2f}",
+                str(r.overspend_micro),
+                str(r.retries),
+                ",".join(r.violations) or "-",
+            )
+        )
+    widths = [max(len(row[i]) for row in cells) for i in range(len(_COLUMNS))]
+    return "\n".join(
+        "  ".join(cell.ljust(widths[i]) for i, cell in enumerate(row)) for row in cells
+    )
+
+
+def _sweep_tree() -> HarnessTree:
+    """The hot tree the sweep contends on: a small parent, many children (the shootout's shape)."""
+    return HarnessTree(
+        parent_id="p",
+        parent_limit=1000,
+        child_ids=tuple(f"c{i}" for i in range(8)),
+        child_limit=100_000,
+        period=datetime(2026, 6, 1, tzinfo=UTC),
+    )
+
+
+async def run_sweep(
+    engine: AsyncEngine, *, concurrencies: Sequence[int], ops_per_worker: int, seed: int
+) -> list[RunMetrics]:
+    """Run every strategy at every concurrency level, returning the metrics for the table."""
+    rows: list[RunMetrics] = []
+    tree = _sweep_tree()
+    try:
+        for concurrency in concurrencies:
+            for strategy in STRATEGIES.values():
+                rows.append(
+                    await run_strategy(
+                        engine,
+                        strategy,
+                        tree=tree,
+                        concurrency=concurrency,
+                        ops_per_worker=ops_per_worker,
+                        seed=seed,
+                    )
+                )
+    finally:
+        await _drop_harness_balance(engine)
+    return rows
+
+
+def main(argv: Sequence[str] | None = None) -> None:
+    """CLI for the on-demand sweep: print the numbers table for a running Postgres."""
+    parser = argparse.ArgumentParser(description="Tollgate comparative reserve-guard load harness")
+    parser.add_argument(
+        "--concurrency",
+        type=int,
+        action="append",
+        default=None,
+        help="concurrency level(s); repeatable (default: 8 32 64)",
+    )
+    parser.add_argument("--ops", type=int, default=8, help="reserves per worker (default 8)")
+    parser.add_argument("--seed", type=int, default=1, help="workload seed (default 1)")
+    parser.add_argument(
+        "--database-url",
+        default=os.environ.get("TOLLGATE_DATABASE_URL"),
+        help="asyncpg URL (default $TOLLGATE_DATABASE_URL)",
+    )
+    args = parser.parse_args(argv)
+    if not args.database_url:
+        parser.error("no database URL: pass --database-url or set TOLLGATE_DATABASE_URL")
+    concurrencies = args.concurrency or [8, 32, 64]
+
+    async def _go() -> list[RunMetrics]:
+        engine = create_async_engine(args.database_url, poolclass=pool.NullPool)
+        try:
+            return await run_sweep(
+                engine, concurrencies=concurrencies, ops_per_worker=args.ops, seed=args.seed
+            )
+        finally:
+            await engine.dispose()
+
+    print(format_table(asyncio.run(_go())))
+
+
+if __name__ == "__main__":
+    main()
