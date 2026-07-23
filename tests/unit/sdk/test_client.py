@@ -58,9 +58,37 @@ async def test_reserve_sends_the_wire_shape_and_parses_the_result() -> None:
         "model": "claude",
         "input_bound_tokens": 100,
         "max_output_tokens": 100,
+        "cache_creation_bound_tokens": 0,
         "labels": {"env": "prod"},
         "project_id": "p1",
     }
+
+
+async def test_reserve_sends_a_declared_cache_creation_bound() -> None:
+    seen: dict[str, object] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen["body"] = json.loads(request.content)
+        return httpx.Response(
+            200,
+            json={
+                "reservation_id": "res-1",
+                "estimated_micro": 400,
+                "price_book_version": "pb-1",
+                "ttl_deadline": "2026-06-23T12:10:00+00:00",
+            },
+        )
+
+    client = _client(httpx.MockTransport(handler))
+    await client.reserve(
+        provider="anthropic",
+        model="claude",
+        input_bound_tokens=100,
+        max_output_tokens=100,
+        idempotency_key="idem-1",
+        cache_creation_bound_tokens=80,
+    )
+    assert cast(dict[str, object], seen["body"])["cache_creation_bound_tokens"] == 80
 
 
 async def test_reserve_maps_402_to_budget_denied() -> None:

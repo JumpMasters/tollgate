@@ -118,6 +118,7 @@ class TollgateClient:
         input_bound_tokens: int,
         max_output_tokens: int,
         idempotency_key: str,
+        cache_creation_bound_tokens: int = 0,
         project: str | None = None,
         labels: dict[str, str] | None = None,
     ) -> ReserveResult:
@@ -126,6 +127,7 @@ class TollgateClient:
             "model": model,
             "input_bound_tokens": input_bound_tokens,
             "max_output_tokens": max_output_tokens,
+            "cache_creation_bound_tokens": cache_creation_bound_tokens,
             "labels": labels or {},
         }
         if project is not None:

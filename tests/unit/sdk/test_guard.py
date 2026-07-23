@@ -118,6 +118,26 @@ async def test_reserve_then_commit_on_clean_exit_with_usage() -> None:
     assert client.metered is None  # commit succeeded -> no fallback
 
 
+async def test_guard_passes_a_declared_cache_creation_bound_through_to_reserve() -> None:
+    # The caller declares the cache-write bound (the tokenizer does not estimate it); the guard
+    # forwards it verbatim so the reserve holds the worst-case cache-write cost up front.
+    client = _FakeClient()
+    async with _guard(client, cache_creation_bound_tokens=80) as call:
+        call.record_usage(input_tokens=90, output_tokens=40)
+        assert call.reservation_id == "res-1"
+    assert client.reserved is not None
+    assert client.reserved["cache_creation_bound_tokens"] == 80
+
+
+async def test_guard_defaults_the_cache_creation_bound_to_zero() -> None:
+    # Omitting it (every existing caller) forwards a zero bound: the estimate is unchanged.
+    client = _FakeClient()
+    async with _guard(client) as call:
+        call.record_usage(input_tokens=1, output_tokens=1)
+    assert client.reserved is not None
+    assert client.reserved["cache_creation_bound_tokens"] == 0
+
+
 async def test_clean_exit_without_usage_cancels() -> None:
     client = _FakeClient()
     async with _guard(client):

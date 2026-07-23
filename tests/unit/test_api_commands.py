@@ -154,6 +154,26 @@ def test_reserve_translates_the_wire_into_the_command() -> None:
     )
 
 
+def test_reserve_maps_the_cache_creation_bound_into_the_command() -> None:
+    stub = _StubReserve()
+    client = TestClient(_app(reserve_handler=stub))
+    body = {**_RESERVE_BODY, "cache_creation_bound_tokens": 50}
+    response = client.post("/v1/reserve", json=body, headers=_AUTH_HEADERS)
+    assert response.status_code == 200
+    (_, command) = stub.calls[0]
+    assert command.cache_creation_bound_tokens == 50
+
+
+def test_reserve_defaults_the_cache_creation_bound_to_zero() -> None:
+    # An existing caller that omits the field reserves exactly as before (backward compatible).
+    stub = _StubReserve()
+    client = TestClient(_app(reserve_handler=stub))
+    response = client.post("/v1/reserve", json=_RESERVE_BODY, headers=_AUTH_HEADERS)
+    assert response.status_code == 200
+    (_, command) = stub.calls[0]
+    assert command.cache_creation_bound_tokens == 0
+
+
 def test_reserve_requires_the_idempotency_key_header() -> None:
     stub = _StubReserve()
     client = TestClient(_app(reserve_handler=stub))

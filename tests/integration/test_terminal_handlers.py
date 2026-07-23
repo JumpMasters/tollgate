@@ -107,7 +107,9 @@ def _auth() -> AuthContext:
     return AuthContext(credential=credential, principal=principal)
 
 
-async def _reserve(engine: AsyncEngine, key: str = "idem-res") -> ReserveResult:
+async def _reserve(
+    engine: AsyncEngine, key: str = "idem-res", *, cache_creation_bound_tokens: int = 0
+) -> ReserveResult:
     handler = ReserveHandler(
         uow=PostgresUnitOfWork(engine),
         clock=_ClockAt(_NOW),
@@ -121,7 +123,8 @@ async def _reserve(engine: AsyncEngine, key: str = "idem-res") -> ReserveResult:
         input_bound_tokens=100,
         max_output_tokens=100,
         labels={"env": "prod"},
-    )  # estimate = 1*100 + 2*100 = 300
+        cache_creation_bound_tokens=cache_creation_bound_tokens,
+    )  # estimate = 1*100 + 2*100 (+ 1.25*cache_creation_bound) = 300 (+ 100 when bound=80)
     return await handler.reserve(_auth(), command)
 
 
@@ -243,6 +246,56 @@ async def test_commit_records_overage_above_the_estimate(
     )
     assert await _balances(committing_engine, "b-user") == (0, 300, 200)
     assert await _balances(committing_engine, "b-org") == (0, 300, 200)
+    assert await _scalar(committing_engine, "SELECT count(*) FROM ledger WHERE kind='overage'") == 2
+
+
+async def test_declared_cache_creation_bound_commits_with_no_overage(
+    committing_engine: AsyncEngine,
+) -> None:
+    # The cache-creation rate (1.25) is a premium above the input rate (1). Declaring the
+    # cache-write bound up front holds the worst-case cache-write cost, so a commit that realizes
+    # those cache-creation tokens reconciles fully into committed spend — no audited overage.
+    await _seed(committing_engine)
+    reserved = await _reserve(committing_engine, cache_creation_bound_tokens=80)
+    assert reserved.estimated_micro == 400  # 100 + 200 + ceil(1.25*80)=100
+    result = await _commit_handler(committing_engine).commit(
+        _auth(),
+        CommitCommand(
+            idempotency_key="idem-commit",
+            reservation_id=reserved.reservation_id,
+            usage=ProviderUsage(input_tokens=100, output_tokens=100, cache_creation_tokens=80),
+        ),
+    )  # actual = 100*1 + 100*2 + 80*1.25 = 400 == the reserved worst case
+    assert result == CommitResult(
+        reservation_id=reserved.reservation_id, committed_micro=400, overage_micro=0
+    )
+    assert await _balances(committing_engine, "b-user") == (0, 400, 0)
+    assert await _balances(committing_engine, "b-org") == (0, 400, 0)
+    assert await _scalar(committing_engine, "SELECT count(*) FROM ledger WHERE kind='overage'") == 0
+
+
+async def test_undeclared_cache_creation_bound_still_overruns_into_overage(
+    committing_engine: AsyncEngine,
+) -> None:
+    # The contrast: the SAME cache-writing call that omits the bound reserves only input + output
+    # (300), so the realized cache-creation cost (100) has no reservation to land in and surfaces
+    # as audited overage — the safe direction, unchanged from before this feature.
+    await _seed(committing_engine)
+    reserved = await _reserve(committing_engine)  # no cache_creation bound declared
+    assert reserved.estimated_micro == 300  # 100 + 200, cache write not reserved
+    result = await _commit_handler(committing_engine).commit(
+        _auth(),
+        CommitCommand(
+            idempotency_key="idem-commit",
+            reservation_id=reserved.reservation_id,
+            usage=ProviderUsage(input_tokens=100, output_tokens=100, cache_creation_tokens=80),
+        ),
+    )  # actual = 400 > est 300 -> the unreserved 100 of cache-creation cost is overage
+    assert result == CommitResult(
+        reservation_id=reserved.reservation_id, committed_micro=300, overage_micro=100
+    )
+    assert await _balances(committing_engine, "b-user") == (0, 300, 100)
+    assert await _balances(committing_engine, "b-org") == (0, 300, 100)
     assert await _scalar(committing_engine, "SELECT count(*) FROM ledger WHERE kind='overage'") == 2
 
 

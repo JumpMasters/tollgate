@@ -112,6 +112,7 @@ async def reserve(
         model=body.model,
         input_bound_tokens=body.input_bound_tokens,
         max_output_tokens=body.max_output_tokens,
+        cache_creation_bound_tokens=body.cache_creation_bound_tokens,
         labels=body.labels,
         project_id=None if body.project_id is None else ProjectId(body.project_id),
     )

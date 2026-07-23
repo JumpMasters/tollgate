@@ -69,21 +69,33 @@ class Reconciliation:
     overage_micro: int
 
 
-def estimate_micro(price: ModelPrice, *, input_bound_tokens: int, max_output_tokens: int) -> int:
+def estimate_micro(
+    price: ModelPrice,
+    *,
+    input_bound_tokens: int,
+    max_output_tokens: int,
+    cache_creation_bound_tokens: int = 0,
+) -> int:
     """Worst-case reserve estimate: full (non-cached) input price + output ceiling.
 
     ``input_bound_tokens`` is the tokenizer-derived upper bound on the prompt and
-    ``max_output_tokens`` the provider ceiling. The total is rounded **up** to whole
-    micro-USD (:func:`ceil_micro`), so the estimate over-reserves in the safe direction
-    literally — a sub-micro worst case still holds ``>= 1`` micro rather than rounding to
-    zero, and the held estimate always covers the half-up-rounded actual. Returns integer
-    micro-USD.
+    ``max_output_tokens`` the provider ceiling. ``cache_creation_bound_tokens`` is an
+    **optional** caller-declared upper bound on tokens the call intends to write to the
+    provider's prompt cache, priced at the (premium) cache-creation rate; it defaults to
+    ``0``, so a caller that declares no cache write reserves exactly input + output as
+    before. Declaring it brings the worst-case cache-write cost inside the pre-charge, so a
+    commit that realizes those tokens reconciles without spilling into audited overage. The
+    total is rounded **up** to whole micro-USD (:func:`ceil_micro`), so the estimate
+    over-reserves in the safe direction literally — a sub-micro worst case still holds ``>= 1``
+    micro rather than rounding to zero, and the held estimate always covers the
+    half-up-rounded actual. Returns integer micro-USD.
     """
-    if input_bound_tokens < 0 or max_output_tokens < 0:
+    if input_bound_tokens < 0 or max_output_tokens < 0 or cache_creation_bound_tokens < 0:
         raise ValueError("token counts must be non-negative")
     total = (
         price.input_micro_per_token * input_bound_tokens
         + price.output_micro_per_token * max_output_tokens
+        + price.cache_creation_micro_per_token * cache_creation_bound_tokens
     )
     return ceil_micro(total)
 

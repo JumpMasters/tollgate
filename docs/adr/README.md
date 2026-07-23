@@ -47,6 +47,7 @@ The format follows Michael Nygard's
 - [0036 — Cache-creation token class in the cost model](0036-cache-creation-token-class.md)
 - [0037 — Metering command and LiteLLM callback](0037-metering-command-and-litellm-callback.md)
 - [0038 — Cache only successful idempotent responses](0038-cache-only-successful-idempotent-responses.md)
+- [0039 — Optional declared cache-creation bound in the reserve estimate](0039-cache-creation-reservation-bound.md)
 
 ## Adding a record
 

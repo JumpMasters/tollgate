@@ -25,9 +25,12 @@ class ReserveCommand:
 
     ``input_bound_tokens`` is the tokenizer-derived upper bound on the prompt and
     ``max_output_tokens`` the provider ceiling; together they drive the worst-case
-    estimate the cost model computes. ``project_id`` is set only when the
-    request named a project *and* the credential authorizes it (resolved in the
-    application). ``labels`` are opaque chargeback tags carried onto the reservation.
+    estimate the cost model computes. ``cache_creation_bound_tokens`` is an optional
+    caller-declared upper bound on tokens the call intends to write to the provider's
+    prompt cache (default ``0``); when set, the worst-case cache-write cost is reserved
+    up front so a commit that realizes it does not spill into audited overage. ``project_id``
+    is set only when the request named a project *and* the credential authorizes it (resolved
+    in the application). ``labels`` are opaque chargeback tags carried onto the reservation.
     """
 
     idempotency_key: str
@@ -37,6 +40,7 @@ class ReserveCommand:
     max_output_tokens: int
     labels: Mapping[str, str]
     project_id: ProjectId | None = None
+    cache_creation_bound_tokens: int = 0
 
     def __post_init__(self) -> None:
         # frozen guards rebinding, not the referenced dict; store a read-only copy so a later

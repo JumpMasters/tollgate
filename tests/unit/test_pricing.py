@@ -261,3 +261,53 @@ def test_actual_micro_rejects_negative_cache_creation_tokens() -> None:
     )
     with pytest.raises(ValueError, match="non-negative"):
         actual_micro(price, input_tokens=100, output_tokens=0, cache_creation_tokens=-1)
+
+
+# creation rate (3.125) intentionally EXCEEDS the input rate (2.5): a declared cache write is
+# reserved at that premium so a commit that realizes it reconciles without spilling into overage.
+_CREATION_PRICE = ModelPrice(
+    provider="anthropic",
+    model="claude",
+    input_micro_per_token=Decimal("2.5"),
+    output_micro_per_token=Decimal("10"),
+    cached_input_micro_per_token=Decimal("1.25"),
+    cache_creation_micro_per_token=Decimal("3.125"),
+)
+
+
+def test_estimate_adds_the_declared_cache_creation_bound_at_the_creation_rate() -> None:
+    # input 1000 @ 2.5 = 2500; output 500 @ 10 = 5000; cache-creation bound 800 @ 3.125 = 2500.
+    assert (
+        estimate_micro(
+            _CREATION_PRICE,
+            input_bound_tokens=1000,
+            max_output_tokens=500,
+            cache_creation_bound_tokens=800,
+        )
+        == 10000
+    )
+
+
+def test_estimate_cache_creation_bound_defaults_to_zero_and_leaves_the_estimate_unchanged() -> None:
+    # Omitting the bound (every existing caller) reserves exactly input + output, as before.
+    without = estimate_micro(_CREATION_PRICE, input_bound_tokens=1000, max_output_tokens=500)
+    assert (
+        estimate_micro(
+            _CREATION_PRICE,
+            input_bound_tokens=1000,
+            max_output_tokens=500,
+            cache_creation_bound_tokens=0,
+        )
+        == without
+        == 7500
+    )
+
+
+def test_estimate_rejects_negative_cache_creation_bound() -> None:
+    with pytest.raises(ValueError, match="non-negative"):
+        estimate_micro(
+            _CREATION_PRICE,
+            input_bound_tokens=10,
+            max_output_tokens=10,
+            cache_creation_bound_tokens=-1,
+        )
