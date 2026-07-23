@@ -210,6 +210,18 @@ class _ReferenceModel:
                 state.status = "reaped"
 
 
+async def _truncate_all(engine: AsyncEngine) -> None:
+    """Truncate every data table this test owns (the ``committing_engine`` cleanup convention).
+
+    ``_reset_and_seed`` truncates at the *start* of each Hypothesis example, but this module
+    manages its own engine outside the ``db_conn``/``committing_engine`` fixtures, so nothing
+    truncates after the *last* example. Left uncleaned, the final example's rows (e.g. the
+    ``pb-1`` price book) leak into whatever integration test collects next in the same session.
+    """
+    async with engine.begin() as conn:
+        await conn.execute(text(f"TRUNCATE {_DATA_TABLES} CASCADE"))
+
+
 async def _reset_and_seed(engine: AsyncEngine) -> None:
     """Truncate every data table and seed the fixed price book + budget tree for one example."""
     async with engine.begin() as conn:
@@ -461,6 +473,7 @@ def test_budget_machine_upholds_invariants(postgres_url: str) -> None:
             BudgetMachine, settings=_SETTINGS
         )
     finally:
+        loop.run_until_complete(_truncate_all(engine))
         loop.run_until_complete(engine.dispose())
         loop.close()
         _ENGINE = None
