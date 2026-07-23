@@ -15,6 +15,7 @@ from loadtest.harness import (
     _ensure_harness_balance,
     _read_harness_balances,
     _seed_harness_balance,
+    run_product_workload,
     run_strategy,
 )
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -157,3 +158,18 @@ async def test_occ_is_correct_but_thrashes(committing_engine: AsyncEngine) -> No
         assert metrics.retries > 0  # but the hot row thrashes
     finally:
         await _drop_harness_balance(committing_engine)
+
+
+async def test_product_path_stays_correct_under_concurrency(committing_engine: AsyncEngine) -> None:
+    metrics = await run_product_workload(
+        committing_engine,
+        concurrency=24,
+        ops_per_worker=3,
+        abandon_rate=0.25,
+        dup_rate=0.25,
+        seed=7,
+    )
+    assert metrics.violations == ()  # full oracle: conservation + exactly-once + balances
+    assert metrics.overspend_micro == 0  # the real guard + storage CHECK never overspend
+    assert metrics.committed > 0  # work actually happened
+    assert metrics.reaped > 0  # abandoned reserves were reclaimed exactly once
