@@ -17,6 +17,17 @@ from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
 
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncConnection
+
+from tollgate.adapters.postgres.schema import (
+    budget,
+    budget_balance,
+    ledger,
+    reservation,
+    team,
+    user_principal,
+)
 from tollgate.domain.invariants import (
     Balance,
     LedgerDelta,
@@ -230,3 +241,100 @@ def evaluate(
     if Check.TREE_ROLLUP in checks:
         violations.extend(_tree_rollup(balances, list(tree_edges)))
     return OracleReport(violations=tuple(violations))
+
+
+async def _load_balances(conn: AsyncConnection) -> dict[NodeKey, Balance]:
+    result = await conn.execute(
+        select(
+            budget_balance.c.budget_id,
+            budget_balance.c.period_start,
+            budget_balance.c.limit_micro,
+            budget_balance.c.reserved_micro,
+            budget_balance.c.committed_micro,
+            budget_balance.c.overage_micro,
+        )
+    )
+    balances: dict[NodeKey, Balance] = {}
+    for row in result:
+        balances[(str(row.budget_id), row.period_start)] = Balance(
+            limit_micro=int(row.limit_micro),
+            reserved_micro=int(row.reserved_micro),
+            committed_micro=int(row.committed_micro),
+            overage_micro=int(row.overage_micro),
+        )
+    return balances
+
+
+async def _load_ledger(conn: AsyncConnection) -> list[LedgerRow]:
+    result = await conn.execute(
+        select(
+            ledger.c.budget_id,
+            ledger.c.period_start,
+            ledger.c.reservation_id,
+            ledger.c.delta_reserved_micro,
+            ledger.c.delta_committed_micro,
+            ledger.c.delta_overage_micro,
+        )
+    )
+    return [
+        LedgerRow(
+            budget_id=str(row.budget_id),
+            period_start=row.period_start,
+            reservation_id=None if row.reservation_id is None else str(row.reservation_id),
+            delta_reserved_micro=int(row.delta_reserved_micro),
+            delta_committed_micro=int(row.delta_committed_micro),
+            delta_overage_micro=int(row.delta_overage_micro),
+        )
+        for row in result
+    ]
+
+
+async def _load_reservations(conn: AsyncConnection) -> list[ReservationRow]:
+    result = await conn.execute(select(reservation.c.reservation_id, reservation.c.status))
+    return [
+        ReservationRow(reservation_id=str(row.reservation_id), status=str(row.status))
+        for row in result
+    ]
+
+
+async def _load_tree_edges(conn: AsyncConnection) -> list[TreeEdge]:
+    budgets = (
+        await conn.execute(select(budget.c.budget_id, budget.c.scope_kind, budget.c.scope_id))
+    ).all()
+    team_org = {
+        str(r.team_id): str(r.org_id)
+        for r in (await conn.execute(select(team.c.team_id, team.c.org_id))).all()
+    }
+    user_team = {
+        str(r.user_id): str(r.team_id)
+        for r in (
+            await conn.execute(select(user_principal.c.user_id, user_principal.c.team_id))
+        ).all()
+    }
+    by_scope = {(str(r.scope_kind), str(r.scope_id)): str(r.budget_id) for r in budgets}
+    edges: list[TreeEdge] = []
+    for r in budgets:
+        scope_kind, scope_id, budget_id = str(r.scope_kind), str(r.scope_id), str(r.budget_id)
+        parent: str | None = None
+        if scope_kind == "user":
+            team_id = user_team.get(scope_id)
+            parent = by_scope.get(("team", team_id)) if team_id is not None else None
+        elif scope_kind == "team":
+            org_id = team_org.get(scope_id)
+            parent = by_scope.get(("org", org_id)) if org_id is not None else None
+        if parent is not None:
+            edges.append(TreeEdge(parent_budget_id=parent, child_budget_id=budget_id))
+    return edges
+
+
+async def load_and_check(
+    conn: AsyncConnection, *, checks: frozenset[Check] = ALL_CHECKS
+) -> OracleReport:
+    """Load a finished run's rows from Postgres and run the selected checks (§7, ADR 0011)."""
+    return evaluate(
+        balances=await _load_balances(conn),
+        ledger_rows=await _load_ledger(conn),
+        reservations=await _load_reservations(conn),
+        tree_edges=await _load_tree_edges(conn),
+        checks=checks,
+    )
