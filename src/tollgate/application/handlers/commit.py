@@ -8,7 +8,12 @@ excess as audited overage. A commit that finds the reservation *reaped* does not
 claims the one legal post-reap transition and applies the actual against each line's live
 remaining — the self-healing late commit (ADR 0029) — so real, already-incurred spend is
 always recorded. Every denial raises a typed error that rolls the whole transaction back; only
-a success persists its idempotency key.
+a success persists its response. The reservation status machine
+(``claim_terminal``/``claim_late_commit``) is the exactly-once backstop here, so this response
+cache exists only to replay the original result — and it lives on the never-reaped
+``metered_receipt`` table rather than the TTL'd ``idempotency_key``, so a retry after the key's
+TTL replays the cached success instead of re-claiming as fresh and failing the settled-status
+guard with an ambiguous ``ReservationNotHeld`` (#125).
 """
 
 from __future__ import annotations
@@ -95,12 +100,15 @@ class CommitHandler:
         no existence leak), :class:`ReservationNotHeld` when the terminal effect already
         happened under a different key, :class:`IdempotencyKeyReuse` on key reuse, and
         :class:`UnknownModel` if the stamped price row is missing. A reaped reservation
-        self-heals instead of failing.
+        self-heals instead of failing. A retry under the same key replays the cached result from
+        the durable ``metered_receipt`` (never reaped), even past the idempotency-key TTL (#125).
         """
         fingerprint = commit_fingerprint(auth.principal, command)
         principal_id = auth.credential.principal_id
         async with self._uow.begin() as tx:
-            claim = await tx.idempotency.claim(principal_id, command.idempotency_key, fingerprint)
+            claim = await tx.metered_receipt.claim(
+                principal_id, command.idempotency_key, fingerprint
+            )
             if claim.outcome is ClaimOutcome.REPLAY:
                 response = claim.response
                 if response is None:  # pragma: no cover - a committed command always stored one
@@ -136,7 +144,7 @@ class CommitHandler:
                 result = await self._commit_reaped(tx, command, lines, record, actual)
             else:
                 raise ReservationNotHeld
-            await tx.idempotency.store_response(
+            await tx.metered_receipt.store_response(
                 principal_id,
                 command.idempotency_key,
                 _result_to_response(result),

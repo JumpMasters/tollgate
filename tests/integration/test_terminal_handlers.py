@@ -18,6 +18,7 @@ from tollgate.application.handlers.cancel import CancelHandler
 from tollgate.application.handlers.commit import CommitHandler
 from tollgate.application.handlers.extend import ExtendHandler
 from tollgate.application.handlers.grace import GraceBackfillHandler
+from tollgate.application.handlers.reap import IdempotencyReaperHandler
 from tollgate.application.handlers.reserve import ReserveHandler
 from tollgate.domain.commands import (
     CancelCommand,
@@ -214,8 +215,14 @@ async def test_commit_reconciles_and_persists_the_envelope(
         await _scalar(
             committing_engine, "SELECT count(*) FROM idempotency_key WHERE response IS NOT NULL"
         )
-        == 2
-    )  # the reserve and the commit
+        == 1
+    )  # the reserve (commit's response now lives on the durable metered_receipt, #125)
+    assert (
+        await _scalar(
+            committing_engine, "SELECT count(*) FROM metered_receipt WHERE response IS NOT NULL"
+        )
+        == 1
+    )  # the commit's durable receipt (#125)
 
 
 async def test_commit_records_overage_above_the_estimate(
@@ -260,6 +267,61 @@ async def test_duplicate_commit_replays_without_double_applying(
     )
 
 
+async def test_commit_retry_after_key_ttl_replays_via_durable_receipt(
+    committing_engine: AsyncEngine,
+) -> None:
+    # #125: commit's response cache lives on the never-reaped metered_receipt table, not the
+    # TTL'd idempotency_key. A retry after the key's TTL must replay the original result instead
+    # of re-claiming fresh and failing the settled-status guard with an ambiguous
+    # ReservationNotHeld. (Pre-fix this raised ReservationNotHeld; verified red-then-green.)
+    await _seed(committing_engine)
+    reserved = await _reserve(committing_engine)
+    command = CommitCommand(
+        idempotency_key="idem-commit",
+        reservation_id=reserved.reservation_id,
+        usage=ProviderUsage(input_tokens=100, output_tokens=50),
+    )  # actual = 100*1 + 50*2 = 200
+    first = await _commit_handler(committing_engine).commit(_auth(), command)
+    assert first == CommitResult(
+        reservation_id=reserved.reservation_id, committed_micro=200, overage_micro=0
+    )
+
+    # Age well past the idempotency-key TTL and drain the reaped table. A clock far in the future
+    # guarantees the cutoff is past every key's real created_at, so the reaper WOULD have deleted
+    # the commit key had it been stored there.
+    reaper = IdempotencyReaperHandler(
+        uow=PostgresUnitOfWork(committing_engine),
+        clock=_ClockAt(datetime.now(UTC) + timedelta(days=2)),
+        ttl_hours=24,
+        batch_size=100,
+        max_batches_per_tick=100,
+    )
+    deleted = await reaper.run_once()
+    assert deleted >= 1  # the aged idempotency_key rows (the reserve key) were reaped
+    assert await _scalar(committing_engine, "SELECT count(*) FROM idempotency_key") == 0
+
+    # The retry replays the original result (does NOT raise ReservationNotHeld, the pre-fix
+    # symptom) and re-applies nothing.
+    replay = await _commit_handler(committing_engine).commit(_auth(), command)
+    assert replay == first
+    assert await _balances(committing_engine, "b-user") == (0, 200, 0)
+    assert await _balances(committing_engine, "b-org") == (0, 200, 0)
+    status = await _scalar(
+        committing_engine,
+        "SELECT status FROM reservation WHERE reservation_id = :r",
+        {"r": reserved.reservation_id},
+    )
+    assert status == "committed"
+    # the replay came from the durable receipt, not the reaped idempotency table
+    assert (
+        await _scalar(
+            committing_engine,
+            "SELECT count(*) FROM metered_receipt WHERE response IS NOT NULL",
+        )
+        == 1
+    )
+
+
 async def test_commit_after_cancel_is_rejected_and_rolls_back(
     committing_engine: AsyncEngine,
 ) -> None:
@@ -278,8 +340,11 @@ async def test_commit_after_cancel_is_rejected_and_rolls_back(
                 usage=ProviderUsage(input_tokens=100, output_tokens=50),
             ),
         )
-    # the rejected commit persisted nothing: no key, no balance change
-    assert await _scalar(committing_engine, "SELECT count(*) FROM idempotency_key") == 2
+    # the rejected commit persisted nothing: no receipt, no balance change. The reserve key is on
+    # idempotency_key and the cancel's receipt on the durable metered_receipt (#125); the rolled-
+    # back late commit left metered_receipt at just the cancel's one row.
+    assert await _scalar(committing_engine, "SELECT count(*) FROM idempotency_key") == 1  # reserve
+    assert await _scalar(committing_engine, "SELECT count(*) FROM metered_receipt") == 1  # cancel
     assert await _balances(committing_engine, "b-user") == (0, 0, 0)
 
 
