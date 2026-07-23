@@ -21,6 +21,7 @@ import pytest
 from hypothesis import HealthCheck, settings
 from hypothesis import strategies as st
 from hypothesis.stateful import Bundle, RuleBasedStateMachine, invariant, multiple, rule
+from loadtest.oracle import ALL_CHECKS, Check, OracleReport, load_and_check
 from sqlalchemy import pool, text
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
@@ -39,6 +40,7 @@ from tollgate.application.auth import AuthContext
 from tollgate.application.handlers.cancel import CancelHandler
 from tollgate.application.handlers.commit import CommitHandler
 from tollgate.application.handlers.extend import ExtendHandler
+from tollgate.application.handlers.reap import ReservationReaperHandler
 from tollgate.application.handlers.reserve import ReserveHandler
 from tollgate.domain.commands import (
     CancelCommand,
@@ -200,6 +202,13 @@ class _ReferenceModel:
         state = self.res[reservation_id]
         state.ttl = max(state.ttl, ttl)
 
+    def apply_reap(self, now: datetime) -> None:
+        for state in self.res.values():
+            if state.status == "held" and state.ttl <= now:
+                for budget_id in state.nodes:
+                    self.nodes[budget_id].reserved -= state.estimate
+                state.status = "reaped"
+
 
 async def _reset_and_seed(engine: AsyncEngine) -> None:
     """Truncate every data table and seed the fixed price book + budget tree for one example."""
@@ -303,6 +312,7 @@ class BudgetMachine(RuleBasedStateMachine):
         self.commit_h = CommitHandler(uow=uow, ids=ids)
         self.cancel_h = CancelHandler(uow=uow, ids=ids)
         self.extend_h = ExtendHandler(uow=uow, clock=self.clock, reservation_ttl_seconds=_TTL)
+        self.reaper = ReservationReaperHandler(uow=uow, clock=self.clock, ids=ids, batch_size=256)
 
     def _key(self) -> str:
         self.counter += 1
@@ -395,6 +405,12 @@ class BudgetMachine(RuleBasedStateMachine):
             with pytest.raises(ReservationNotHeld):
                 _run(self.extend_h.extend(auth, command))
 
+    @rule(advance=st.integers(min_value=0, max_value=_TTL * 2))
+    def reap(self, advance: int) -> None:
+        self.clock.advance(advance)
+        _run(self.reaper.run_once())
+        self.model.apply_reap(self.clock.now())
+
     @invariant()
     def db_matches_model(self) -> None:
         db = _run(_db_balances(self.engine))
@@ -413,6 +429,14 @@ class BudgetMachine(RuleBasedStateMachine):
                 node.committed,
                 node.overage,
             ), f"{budget_id} DB {db[budget_id]} != model {node}"
+
+    def teardown(self) -> None:
+        report = _run(self._audit())
+        assert report.ok, [(v.check, v.scope, v.detail) for v in report.violations]
+
+    async def _audit(self) -> OracleReport:
+        async with self.engine.connect() as conn:
+            return await load_and_check(conn, checks=ALL_CHECKS - {Check.TREE_ROLLUP})
 
 
 _SETTINGS = settings(
