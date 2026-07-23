@@ -17,6 +17,7 @@ strategies are deliberately-flawed strawmen; only the guarded write is the produ
 from __future__ import annotations
 
 import asyncio
+import math
 import random
 import time
 from collections.abc import Sequence
@@ -199,7 +200,7 @@ def _p99_ms(latencies: Sequence[float]) -> float:
     if not latencies:
         return 0.0
     ordered = sorted(latencies)
-    index = min(len(ordered) - 1, int(len(ordered) * 0.99))
+    index = max(0, math.ceil(len(ordered) * 0.99) - 1)  # nearest-rank; correct at multiples of 100
     return ordered[index] * 1000.0
 
 
@@ -224,9 +225,11 @@ async def run_strategy(
     # Pre-open one committing connection per worker OUTSIDE the timed section: connection-setup
     # latency would otherwise serialise the workers and hide the contention. A barrier then starts
     # them together so the naive over-admission is reliable, not timing-dependent.
-    conns = [await engine.connect() for _ in range(concurrency)]
+    conns: list[AsyncConnection] = []
     barrier = asyncio.Barrier(concurrency)
     try:
+        for _ in range(concurrency):
+            conns.append(await engine.connect())
         started = time.perf_counter()
         results = await asyncio.gather(
             *(
