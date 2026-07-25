@@ -11,27 +11,17 @@ import uuid_utils
 from tollgate.domain.ids import LedgerEntryId, ReservationId
 
 
-def new_ledger_entry_id() -> LedgerEntryId:
-    """Return a fresh time-ordered (UUIDv7) ledger entry id."""
-    return LedgerEntryId(str(uuid_utils.uuid7()))
-
-
-def new_reservation_id() -> ReservationId:
-    """Return a fresh time-ordered (UUIDv7) reservation id."""
-    return ReservationId(str(uuid_utils.uuid7()))
-
-
 class Uuid7IdGenerator:
     """Mints time-ordered (UUIDv7) ids for reservations and ledger entries (the IdGenerator port).
 
-    A thin object wrapper over the module functions so the application can depend on the
-    ``IdGenerator`` port and the composition root injects this concrete generator.
+    The concrete generator the composition root injects wherever the application depends on the
+    ``IdGenerator`` port.
     """
 
     def new_reservation_id(self) -> ReservationId:
         """Return a fresh time-ordered (UUIDv7) reservation id."""
-        return new_reservation_id()
+        return ReservationId(str(uuid_utils.uuid7()))
 
     def new_ledger_entry_id(self) -> LedgerEntryId:
         """Return a fresh time-ordered (UUIDv7) ledger entry id."""
-        return new_ledger_entry_id()
+        return LedgerEntryId(str(uuid_utils.uuid7()))

@@ -95,7 +95,7 @@ def _as_mapping(obj: object) -> dict[str, Any]:
 
 def _int(value: object) -> int:
     """Coerce a token count to a non-negative int; anything unusable becomes 0."""
-    if isinstance(value, bool | int | float):
+    if isinstance(value, int | float):  # bool is an int subclass, so it is covered
         return max(int(value), 0)
     return 0
 

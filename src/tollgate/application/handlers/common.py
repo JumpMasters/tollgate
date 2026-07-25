@@ -1,25 +1,29 @@
 """Shared helpers for the command handlers.
 
-The five mutating commands share four concerns: the canonical idempotency fingerprint,
-a reservation ownership check that never reveals whether a foreign reservation exists,
-the canonical lock ordering of a reservation's lines, and applicable-set resolution with
-the project authorization re-check. They live here so reserve and the lifecycle/backfill
-commands cannot drift apart. Helpers take the narrowest port they need, not the whole
-command context.
+The five mutating commands share five concerns: the canonical idempotency fingerprint and
+the claim/replay/mismatch preamble that opens every command, a reservation ownership check
+that never reveals whether a foreign reservation exists, the canonical lock ordering of a
+reservation's lines, and applicable-set resolution with the project authorization re-check.
+They live here so reserve and the lifecycle/backfill commands cannot drift apart. Helpers
+take the narrowest port they need, not the whole command context.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from tollgate.application.auth import AuthContext, require_scope
-from tollgate.application.ports import BudgetRepository, ReservationRepository
-from tollgate.domain.errors import ScopeNotAuthorized
+from tollgate.application.ports import (
+    BudgetRepository,
+    IdempotencyRepository,
+    ReservationRepository,
+)
+from tollgate.domain.errors import IdempotencyKeyReuse, ScopeNotAuthorized, TollgateError
 from tollgate.domain.ids import ProjectId, ReservationId
-from tollgate.domain.records import ReservationLineView, StoredReservation
+from tollgate.domain.records import ClaimOutcome, ReservationLineView, StoredReservation
 from tollgate.domain.scopes import (
     BudgetNode,
     ScopeKind,
@@ -38,6 +42,31 @@ def command_fingerprint(payload: dict[str, Any]) -> str:
     """
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+async def claim_or_replay(
+    store: IdempotencyRepository,
+    principal_id: str,
+    idempotency_key: str,
+    fingerprint: str,
+) -> Mapping[str, Any] | None:
+    """Claim an idempotency key, returning the cached response to replay or ``None`` to proceed.
+
+    ``None`` means the key was freshly claimed and the caller owns the effect. A returned mapping
+    is a completed command's stored response — the caller rebuilds its typed result from it (the
+    replay path). Raises :class:`IdempotencyKeyReuse` when the key already exists under a different
+    command fingerprint. Both idempotency stores — the TTL'd key table and the durable
+    ``metered_receipt`` — share this claim/replay/mismatch preamble, so the mutating commands
+    cannot drift apart on it.
+    """
+    claim = await store.claim(principal_id, idempotency_key, fingerprint)
+    if claim.outcome is ClaimOutcome.REPLAY:
+        if claim.response is None:  # pragma: no cover - a completed command always stored one
+            raise TollgateError("idempotency replay is missing its stored response")
+        return claim.response
+    if claim.outcome is ClaimOutcome.MISMATCH:
+        raise IdempotencyKeyReuse
+    return None
 
 
 async def load_owned_reservation(
