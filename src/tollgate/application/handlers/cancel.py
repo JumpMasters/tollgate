@@ -21,6 +21,7 @@ from typing import Any
 
 from tollgate.application.auth import AuthContext
 from tollgate.application.handlers.common import (
+    claim_or_replay,
     command_fingerprint,
     load_owned_reservation,
     ordered_lines,
@@ -28,9 +29,9 @@ from tollgate.application.handlers.common import (
 from tollgate.application.ports import IdGenerator, UnitOfWork
 from tollgate.domain.commands import CancelCommand, CancelResult
 from tollgate.domain.credentials import Principal
-from tollgate.domain.errors import IdempotencyKeyReuse, ReservationNotHeld, TollgateError
+from tollgate.domain.errors import ReservationNotHeld
 from tollgate.domain.ids import ReservationId
-from tollgate.domain.records import ClaimOutcome, LedgerEntry, LedgerKind
+from tollgate.domain.records import LedgerEntry, LedgerKind
 from tollgate.domain.reservations import ReservationStatus
 
 
@@ -84,16 +85,11 @@ class CancelHandler:
         fingerprint = cancel_fingerprint(auth.principal, command)
         principal_id = auth.credential.principal_id
         async with self._uow.begin() as tx:
-            claim = await tx.metered_receipt.claim(
-                principal_id, command.idempotency_key, fingerprint
+            replay = await claim_or_replay(
+                tx.metered_receipt, principal_id, command.idempotency_key, fingerprint
             )
-            if claim.outcome is ClaimOutcome.REPLAY:
-                response = claim.response
-                if response is None:  # pragma: no cover - a committed command always stored one
-                    raise TollgateError("idempotency replay is missing its stored response")
-                return _result_from_response(response)
-            if claim.outcome is ClaimOutcome.MISMATCH:
-                raise IdempotencyKeyReuse
+            if replay is not None:
+                return _result_from_response(replay)
 
             stored = await load_owned_reservation(tx.reservations, auth, command.reservation_id)
             lines = ordered_lines(await tx.reservations.find_lines(command.reservation_id))

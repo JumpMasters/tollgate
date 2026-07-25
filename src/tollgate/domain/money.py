@@ -16,8 +16,6 @@ from tollgate.domain.errors import AmountOutOfRange
 #: Micro-USD per US dollar.
 MICRO_PER_USD: Final = 1_000_000
 
-_MICRO = Decimal(MICRO_PER_USD)
-
 #: The largest micro-USD amount the signed ``BigInteger`` balance/ledger columns hold.
 _MAX_MICRO: Final = Decimal(2**63 - 1)
 
@@ -49,17 +47,3 @@ def ceil_micro(amount_micro: Decimal) -> int:
     to zero, so the held estimate always covers the eventual half-up-rounded actual.
     """
     return int(_checked(amount_micro).quantize(Decimal(1), rounding=ROUND_CEILING))
-
-
-def to_micro_usd(usd: Decimal) -> int:
-    """Convert an amount of US dollars to integer micro-USD (rounded half-up)."""
-    if usd < 0:
-        raise ValueError("monetary amounts must be non-negative")
-    return round_micro(usd * _MICRO)
-
-
-def from_micro_usd(micro: int) -> Decimal:
-    """Convert integer micro-USD back to a US-dollar ``Decimal``."""
-    if micro < 0:
-        raise ValueError("monetary amounts must be non-negative")
-    return (Decimal(micro) / _MICRO).quantize(Decimal("0.000001"))

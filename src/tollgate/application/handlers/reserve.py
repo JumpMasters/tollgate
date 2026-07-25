@@ -20,23 +20,18 @@ from typing import Any
 
 from tollgate.application.auth import AuthContext
 from tollgate.application.handlers.common import (
+    claim_or_replay,
     command_fingerprint,
     resolve_applicable_nodes,
 )
 from tollgate.application.ports import Clock, IdGenerator, UnitOfWork
 from tollgate.domain.commands import ReserveCommand, ReserveResult
 from tollgate.domain.credentials import Principal
-from tollgate.domain.errors import (
-    IdempotencyKeyReuse,
-    InsufficientBudget,
-    TollgateError,
-    UnknownModel,
-)
+from tollgate.domain.errors import InsufficientBudget, UnknownModel
 from tollgate.domain.ids import ReservationId
 from tollgate.domain.periods import calendar_month_start
 from tollgate.domain.pricing import estimate_micro
 from tollgate.domain.records import (
-    ClaimOutcome,
     LedgerEntry,
     LedgerKind,
     ReservationLineRecord,
@@ -125,14 +120,11 @@ class ReserveHandler:
         fingerprint = reserve_fingerprint(auth.principal, command)
         principal_id = auth.credential.principal_id
         async with self._uow.begin() as tx:
-            claim = await tx.idempotency.claim(principal_id, command.idempotency_key, fingerprint)
-            if claim.outcome is ClaimOutcome.REPLAY:
-                response = claim.response
-                if response is None:  # pragma: no cover - a committed reserve always stored one
-                    raise TollgateError("idempotency replay is missing its stored response")
-                return _result_from_response(response)
-            if claim.outcome is ClaimOutcome.MISMATCH:
-                raise IdempotencyKeyReuse
+            replay = await claim_or_replay(
+                tx.idempotency, principal_id, command.idempotency_key, fingerprint
+            )
+            if replay is not None:
+                return _result_from_response(replay)
 
             priced = await tx.prices.resolve_price(command.provider, command.model)
             if priced is None:

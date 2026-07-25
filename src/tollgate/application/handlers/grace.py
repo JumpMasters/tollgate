@@ -22,16 +22,17 @@ from typing import Any
 
 from tollgate.application.auth import AuthContext
 from tollgate.application.handlers.common import (
+    claim_or_replay,
     command_fingerprint,
     resolve_applicable_nodes,
 )
 from tollgate.application.ports import Clock, IdGenerator, UnitOfWork
 from tollgate.domain.commands import GraceBackfillCommand, GraceBackfillResult
 from tollgate.domain.credentials import Principal
-from tollgate.domain.errors import IdempotencyKeyReuse, TollgateError, UnknownModel
+from tollgate.domain.errors import UnknownModel
 from tollgate.domain.periods import calendar_month_start
 from tollgate.domain.pricing import actual_micro
-from tollgate.domain.records import ClaimOutcome, LedgerEntry, LedgerKind
+from tollgate.domain.records import LedgerEntry, LedgerKind
 
 
 def grace_backfill_fingerprint(principal: Principal, command: GraceBackfillCommand) -> str:
@@ -94,16 +95,11 @@ class GraceBackfillHandler:
         fingerprint = grace_backfill_fingerprint(auth.principal, command)
         principal_id = auth.credential.principal_id
         async with self._uow.begin() as tx:
-            claim = await tx.metered_receipt.claim(
-                principal_id, command.idempotency_key, fingerprint
+            replay = await claim_or_replay(
+                tx.metered_receipt, principal_id, command.idempotency_key, fingerprint
             )
-            if claim.outcome is ClaimOutcome.REPLAY:
-                response = claim.response
-                if response is None:  # pragma: no cover - a committed command always stored one
-                    raise TollgateError("idempotency replay is missing its stored response")
-                return _result_from_response(response)
-            if claim.outcome is ClaimOutcome.MISMATCH:
-                raise IdempotencyKeyReuse
+            if replay is not None:
+                return _result_from_response(replay)
 
             priced = await tx.prices.resolve_price(command.provider, command.model)
             if priced is None:
