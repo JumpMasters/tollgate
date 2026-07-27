@@ -17,7 +17,7 @@ dependencies = [
     # arm64 (reported as 'arm64', not 'aarch64'), so it is absent from the
     # resolved environment there. Depend on it directly so the lock guarantees
     # it on every platform.
-    "greenlet>=3.5.3",
+    "greenlet>=3.5.4",
     "alembic>=1.18.5",
     "uvicorn>=0.51.0",
     "uuid-utils>=0.17.0",
