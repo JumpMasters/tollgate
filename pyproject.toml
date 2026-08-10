@@ -9,7 +9,7 @@ license-files = ["LICENSE", "NOTICE"]
 dependencies = [
     "fastapi>=0.141.1",
     "pydantic>=2.9",
-    "pydantic-settings>=2.14.2",
+    "pydantic-settings>=2.15.0",
     "sqlalchemy>=2.0",
     "asyncpg>=0.31.0",
     # Required wherever the async SQLAlchemy engine runs. SQLAlchemy only
