@@ -18,7 +18,7 @@ dependencies = [
     # resolved environment there. Depend on it directly so the lock guarantees
     # it on every platform.
     "greenlet>=3.5.5",
-    "alembic>=1.19.0",
+    "alembic>=1.19.1",
     "uvicorn>=0.52.3",
     "uuid-utils>=0.17.0",
     "httpx>=0.28.1",
