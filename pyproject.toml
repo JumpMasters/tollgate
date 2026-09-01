@@ -25,7 +25,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-tokenizers = ["tiktoken>=0.8"]
+tokenizers = ["tiktoken>=0.14.0"]
 litellm = ["litellm>=1.96.2"]
 
 [project.urls]
